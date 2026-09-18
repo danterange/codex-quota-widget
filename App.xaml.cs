@@ -7,4 +7,13 @@ namespace CodexQuotaWidget;
 /// </summary>
 public partial class App : Application
 {
+    /// <summary>
+    /// 显式创建并显示主窗口，避免无标题栏悬浮窗在启动 URI 初始化阶段被隐藏。
+    /// </summary>
+    protected override void OnStartup(StartupEventArgs e)
+    {
+        base.OnStartup(e);
+        MainWindow = new MainWindow();
+        MainWindow.Show();
+    }
 }

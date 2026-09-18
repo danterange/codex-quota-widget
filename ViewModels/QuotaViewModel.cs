@@ -1,5 +1,8 @@
 using System.ComponentModel;
+using System.IO;
 using System.Runtime.CompilerServices;
+using System.Text.Json;
+using System.Windows;
 using System.Windows.Threading;
 using CodexQuotaWidget.Models;
 using CodexQuotaWidget.Services;
@@ -11,16 +14,18 @@ namespace CodexQuotaWidget.ViewModels;
 /// </summary>
 public sealed class QuotaViewModel : INotifyPropertyChanged, IDisposable
 {
-    private readonly IQuotaProvider quotaProvider = new DemoQuotaProvider();
+    private readonly IQuotaProvider quotaProvider;
     private readonly DispatcherTimer refreshTimer;
     private QuotaSnapshot? snapshot;
+    private string? errorMessage;
     private bool disposed;
 
     /// <summary>
-    /// 初始化演示数据提供器和轻量级倒计时刷新器。
+    /// 初始化真实 Codex 提供器；只有显式传入演示提供器时才使用静态演示数据。
     /// </summary>
-    public QuotaViewModel()
+    public QuotaViewModel(IQuotaProvider? provider = null)
     {
+        quotaProvider = provider ?? CreateDefaultProvider();
         refreshTimer = new DispatcherTimer { Interval = TimeSpan.FromMinutes(1) };
         refreshTimer.Tick += RefreshTimerTick;
         _ = RefreshAsync();
@@ -29,14 +34,30 @@ public sealed class QuotaViewModel : INotifyPropertyChanged, IDisposable
 
     public event PropertyChangedEventHandler? PropertyChanged;
 
-    public double FiveHourPercent => snapshot?.FiveHour.Percent ?? 0;
-    public string FiveHourPercentText => $"{FiveHourPercent:0}%";
-    public string FiveHourResetText => FormatRemaining(snapshot?.FiveHour.ResetAt);
-    public double SevenDayPercent => snapshot?.SevenDay.Percent ?? 0;
-    public string SevenDayPercentText => $"{SevenDayPercent:0}%";
-    public string SevenDayResetText => FormatRemaining(snapshot?.SevenDay.ResetAt);
-    public string PlanName => snapshot?.PlanName ?? "Pro";
-    public int ResetCredits => snapshot?.ResetCredits ?? 0;
+    public Visibility FiveHourVisibility => snapshot?.FiveHour is null ? Visibility.Collapsed : Visibility.Visible;
+    public Visibility SevenDayVisibility => snapshot?.SevenDay is null ? Visibility.Collapsed : Visibility.Visible;
+    public double FiveHourPercent => snapshot?.FiveHour?.Percent ?? 0;
+    public string FiveHourPercentText => FormatPercent(snapshot?.FiveHour);
+    public string FiveHourResetText => FormatRemaining(snapshot?.FiveHour?.ResetAt);
+    public double SevenDayPercent => snapshot?.SevenDay?.Percent ?? 0;
+    public string SevenDayPercentText => FormatPercent(snapshot?.SevenDay);
+    public string SevenDayResetText => FormatRemaining(snapshot?.SevenDay?.ResetAt);
+    public string PlanName => snapshot?.PlanName is { Length: > 0 } plan ? plan : "--";
+    public string MembershipText => errorMessage is not null
+        ? errorMessage
+        : snapshot?.MembershipExpiresAt is { } expiry
+        ? $"会员至 {expiry:MM/dd} · 重置"
+        : "会员期限未知 · 重置";
+    public string ResetCreditsText => snapshot?.ResetCredits is { } count ? count.ToString() : "--";
+    public string ErrorText => errorMessage ?? string.Empty;
+
+    /// <summary>
+    /// 暴露一次手动刷新入口，复用与定时刷新相同的错误处理和状态通知。
+    /// </summary>
+    public Task RefreshNowAsync()
+    {
+        return RefreshAsync();
+    }
 
     /// <summary>
     /// 释放计时器事件，避免窗口关闭后仍保留 UI 线程回调。
@@ -54,28 +75,53 @@ public sealed class QuotaViewModel : INotifyPropertyChanged, IDisposable
     }
 
     /// <summary>
-    /// 从额度提供器加载快照，并一次性通知界面刷新所有派生属性。
+    /// 从额度提供器加载快照；读取失败时保留已有快照并暴露错误状态。
     /// </summary>
     private async Task RefreshAsync()
     {
         try
         {
             snapshot = await quotaProvider.GetSnapshotAsync(CancellationToken.None);
-            OnPropertyChanged(string.Empty);
+            errorMessage = null;
         }
         catch (OperationCanceledException)
         {
-            // 取消只终止本次刷新，不把窗口状态误报为失败。
+            return;
         }
+        catch (Exception exception) when (exception is InvalidOperationException or IOException or JsonException or Win32Exception)
+        {
+            errorMessage = "额度读取失败";
+        }
+
+        OnPropertyChanged(string.Empty);
     }
 
     /// <summary>
-    /// 在 UI 线程周期性刷新倒计时文本；额度数据本身由后续真实提供器按需替换。
+    /// 在 UI 线程周期性刷新倒计时文本；额度本身由提供器按需重新读取。
     /// </summary>
     private void RefreshTimerTick(object? sender, EventArgs e)
     {
         OnPropertyChanged(nameof(FiveHourResetText));
         OnPropertyChanged(nameof(SevenDayResetText));
+        _ = RefreshAsync();
+    }
+
+    /// <summary>
+    /// 根据启动参数选择真实提供器或明确的本地演示提供器。
+    /// </summary>
+    private static IQuotaProvider CreateDefaultProvider()
+    {
+        var useDemo = Environment.GetCommandLineArgs().Any(argument =>
+            string.Equals(argument, "--demo", StringComparison.OrdinalIgnoreCase));
+        return useDemo ? new DemoQuotaProvider() : new CodexQuotaProvider();
+    }
+
+    /// <summary>
+    /// 将可选额度窗口转换为百分比文本，未知窗口保持占位符而不伪造数值。
+    /// </summary>
+    private static string FormatPercent(QuotaWindow? quotaWindow)
+    {
+        return quotaWindow is null ? "--" : $"{quotaWindow.Percent:0}%";
     }
 
     /// <summary>
@@ -109,5 +155,4 @@ public sealed class QuotaViewModel : INotifyPropertyChanged, IDisposable
     {
         PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(propertyName));
     }
-
 }

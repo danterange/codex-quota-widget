@@ -27,7 +27,7 @@ public partial class MainWindow : Window
     {
         var workArea = SystemParameters.WorkArea;
         Left = workArea.Right - Width - 12;
-        Top = workArea.Bottom - Height - 12;
+        Top = workArea.Bottom - ActualHeight - 12;
     }
 
     /// <summary>
@@ -47,5 +47,21 @@ public partial class MainWindow : Window
         {
             DragMove();
         }
+    }
+
+    /// <summary>
+    /// 响应右键菜单的手动刷新，适用于用户刚完成登录或额度刚发生变化的场景。
+    /// </summary>
+    private async void RefreshClicked(object sender, RoutedEventArgs e)
+    {
+        await viewModel.RefreshNowAsync();
+    }
+
+    /// <summary>
+    /// 通过上下文菜单结束应用，确保 ViewModel 释放刷新计时器。
+    /// </summary>
+    private void ExitClicked(object sender, RoutedEventArgs e)
+    {
+        Close();
     }
 }

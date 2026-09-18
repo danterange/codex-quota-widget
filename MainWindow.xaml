@@ -3,9 +3,9 @@
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
         Title="Codex 额度"
         Width="250"
-        Height="148"
+        SizeToContent="Height"
         MinWidth="250"
-        MinHeight="148"
+        MinHeight="118"
         MaxWidth="250"
         MaxHeight="148"
         WindowStyle="None"
@@ -24,11 +24,18 @@
             BorderBrush="{StaticResource PanelBorderBrush}"
             BorderThickness="1"
             CornerRadius="4">
+        <Border.ContextMenu>
+            <ContextMenu>
+                <MenuItem Header="刷新额度" Click="RefreshClicked" />
+                <Separator />
+                <MenuItem Header="退出小组件" Click="ExitClicked" />
+            </ContextMenu>
+        </Border.ContextMenu>
         <Grid>
             <Grid.RowDefinitions>
                 <RowDefinition Height="22" />
-                <RowDefinition Height="30" />
-                <RowDefinition Height="30" />
+                <RowDefinition Height="Auto" />
+                <RowDefinition Height="Auto" />
                 <RowDefinition Height="24" />
             </Grid.RowDefinitions>
 
@@ -41,37 +48,37 @@
                     <ColumnDefinition Width="Auto" />
                 </Grid.ColumnDefinitions>
                 <Ellipse Grid.Column="0" Width="7" Height="7" Margin="0,0,6,0" VerticalAlignment="Center" Fill="{StaticResource AccentBrush}" />
-                <TextBlock Grid.Column="1" Text="Codex" FontSize="13" FontWeight="SemiBold" VerticalAlignment="Center" />
+                <TextBlock Grid.Column="1" Text="Codex" FontSize="14" FontWeight="SemiBold" VerticalAlignment="Center" />
                 <Border Grid.Column="2" Margin="6,0,0,0" Padding="5,1" VerticalAlignment="Center" Background="#333333" CornerRadius="3">
-                    <TextBlock Text="Pro" FontSize="10" Foreground="#C8C8C8" />
+                    <TextBlock Text="{Binding PlanName}" FontSize="11" Foreground="#C8C8C8" />
                 </Border>
                 <Button Grid.Column="4" Width="22" Height="20" Padding="0" BorderThickness="0" Background="Transparent" Foreground="{StaticResource SecondaryTextBrush}" FontSize="14" Content="⇄" ToolTip="切换账号" />
             </Grid>
 
-            <Grid Grid.Row="1" Margin="0,4,0,0">
+            <Grid Grid.Row="1" Margin="0,4,0,0" Visibility="{Binding FiveHourVisibility}">
                 <Grid.ColumnDefinitions>
                     <ColumnDefinition Width="23" />
                     <ColumnDefinition Width="*" />
                     <ColumnDefinition Width="34" />
                     <ColumnDefinition Width="39" />
                 </Grid.ColumnDefinitions>
-                <TextBlock Grid.Column="0" Text="5h" FontSize="11" Foreground="{StaticResource SecondaryTextBrush}" VerticalAlignment="Center" />
+                <TextBlock Grid.Column="0" Text="5h" FontSize="12" Foreground="{StaticResource SecondaryTextBrush}" VerticalAlignment="Center" />
                 <ProgressBar Grid.Column="1" Height="5" Margin="0,0,6,0" VerticalAlignment="Center" Minimum="0" Maximum="100" Value="{Binding FiveHourPercent, Mode=OneWay}" Background="#333333" Foreground="{StaticResource AccentBrush}" BorderThickness="0" />
-                <TextBlock Grid.Column="2" Text="{Binding FiveHourPercentText}" FontSize="11" HorizontalAlignment="Right" VerticalAlignment="Center" />
-                <TextBlock Grid.Column="3" Text="{Binding FiveHourResetText}" FontSize="10" Foreground="{StaticResource SecondaryTextBrush}" HorizontalAlignment="Right" VerticalAlignment="Center" />
+                <TextBlock Grid.Column="2" Text="{Binding FiveHourPercentText}" FontSize="12" HorizontalAlignment="Right" VerticalAlignment="Center" />
+                <TextBlock Grid.Column="3" Text="{Binding FiveHourResetText}" FontSize="11" Foreground="{StaticResource SecondaryTextBrush}" HorizontalAlignment="Right" VerticalAlignment="Center" />
             </Grid>
 
-            <Grid Grid.Row="2">
+            <Grid Grid.Row="2" Visibility="{Binding SevenDayVisibility}">
                 <Grid.ColumnDefinitions>
                     <ColumnDefinition Width="23" />
                     <ColumnDefinition Width="*" />
                     <ColumnDefinition Width="34" />
                     <ColumnDefinition Width="39" />
                 </Grid.ColumnDefinitions>
-                <TextBlock Grid.Column="0" Text="7d" FontSize="11" Foreground="{StaticResource SecondaryTextBrush}" VerticalAlignment="Center" />
+                <TextBlock Grid.Column="0" Text="7d" FontSize="12" Foreground="{StaticResource SecondaryTextBrush}" VerticalAlignment="Center" />
                 <ProgressBar Grid.Column="1" Height="5" Margin="0,0,6,0" VerticalAlignment="Center" Minimum="0" Maximum="100" Value="{Binding SevenDayPercent, Mode=OneWay}" Background="#333333" Foreground="{StaticResource WeeklyBrush}" BorderThickness="0" />
-                <TextBlock Grid.Column="2" Text="{Binding SevenDayPercentText}" FontSize="11" HorizontalAlignment="Right" VerticalAlignment="Center" />
-                <TextBlock Grid.Column="3" Text="{Binding SevenDayResetText}" FontSize="10" Foreground="{StaticResource SecondaryTextBrush}" HorizontalAlignment="Right" VerticalAlignment="Center" />
+                <TextBlock Grid.Column="2" Text="{Binding SevenDayPercentText}" FontSize="12" HorizontalAlignment="Right" VerticalAlignment="Center" />
+                <TextBlock Grid.Column="3" Text="{Binding SevenDayResetText}" FontSize="11" Foreground="{StaticResource SecondaryTextBrush}" HorizontalAlignment="Right" VerticalAlignment="Center" />
             </Grid>
 
             <Grid Grid.Row="3" Margin="0,2,0,0">
@@ -79,9 +86,9 @@
                     <ColumnDefinition Width="*" />
                     <ColumnDefinition Width="Auto" />
                 </Grid.ColumnDefinitions>
-                <TextBlock Grid.Column="0" Text="会员至 10/12 · 重置" FontSize="10" Foreground="{StaticResource SecondaryTextBrush}" VerticalAlignment="Center" />
+                <TextBlock Grid.Column="0" Text="{Binding MembershipText}" FontSize="11" Foreground="{StaticResource SecondaryTextBrush}" VerticalAlignment="Center" TextTrimming="CharacterEllipsis" />
                 <Border Grid.Column="1" MinWidth="20" Height="18" Padding="5,0" Background="{StaticResource SuccessBrush}" CornerRadius="8" VerticalAlignment="Center">
-                    <TextBlock Text="1" FontSize="10" Foreground="#15221F" HorizontalAlignment="Center" VerticalAlignment="Center" />
+                    <TextBlock Text="{Binding ResetCreditsText}" FontSize="11" Foreground="#15221F" HorizontalAlignment="Center" VerticalAlignment="Center" />
                 </Border>
             </Grid>
         </Grid>
