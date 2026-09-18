@@ -2,7 +2,7 @@
 
 一个适用于 Windows 的 Codex 额度桌面小组件。它以 VS Code 深色界面风格显示当前账号的 5 小时额度、7 天额度、重置倒计时、会员到期时间和可用重置次数。
 
-> 当前版本提供完整可运行的本地演示数据提供器。真实额度接口需要根据可用的 Codex/OpenAI 账户数据接口接入，界面和数据边界已经分离。
+> 默认模式通过本机 Codex app-server 的只读 JSON-RPC 接口读取当前账号。使用 `--demo` 可运行静态演示数据；会员到期字段在当前 app-server 响应中不可用时会显示“会员期限未知”。
 
 ## 本机效果
 
@@ -18,6 +18,7 @@
 - 展示会员到期日期和可用重置次数；接口未提供会员到期字段时显示未知。
 - 窗口可拖动，关闭后释放刷新计时器。
 - 额度数据通过 `IQuotaProvider` 抽象，后续接入真实数据不需要重写 UI。
+- Pro 20× 只有周额度时自动隐藏 5 小时行，不把不存在的额度窗口显示成 0%。
 
 ## 运行
 
@@ -25,6 +26,12 @@
 
 ```powershell
 dotnet run --project .\CodexQuotaWidget.csproj
+```
+
+需要只验证 UI 时：
+
+```powershell
+dotnet run --project .\CodexQuotaWidget.csproj -- --demo
 ```
 
 发布单文件版本：
