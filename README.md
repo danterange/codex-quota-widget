@@ -45,7 +45,6 @@ dotnet publish .\CodexQuotaWidget.csproj -c Release -r win-x64 --self-contained 
 - `MainWindow.xaml`：小组件布局和 VS Code 风格视觉。
 - `ViewModels/QuotaViewModel.cs`：倒计时和界面状态。
 - `Services/QuotaProvider.cs`：额度提供器接口与本地演示实现。
-- `AI开发记录/`：需求、规划、UI、测试和审查记录。
 
 ## 后续计划
 
