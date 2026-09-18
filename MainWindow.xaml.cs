@@ -19,11 +19,23 @@ public partial class MainWindow : Window
     /// <summary>
     /// 初始化界面绑定和真实或演示额度提供器。
     /// </summary>
-    public MainWindow()
+    public MainWindow(int refreshIntervalSeconds = 10)
     {
         InitializeComponent();
-        viewModel = new QuotaViewModel();
+        viewModel = new QuotaViewModel(refreshIntervalSeconds: refreshIntervalSeconds);
         DataContext = viewModel;
+    }
+
+    /// <summary>让托盘设置修改当前窗口使用的自动刷新间隔。</summary>
+    public void SetRefreshIntervalSeconds(int seconds)
+    {
+        viewModel.SetRefreshIntervalSeconds(seconds);
+    }
+
+    /// <summary>让托盘菜单触发一次额度读取并复用窗口现有错误处理。</summary>
+    public Task RefreshNowAsync()
+    {
+        return viewModel.RefreshNowAsync();
     }
 
     /// <summary>

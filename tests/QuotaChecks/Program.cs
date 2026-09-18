@@ -34,6 +34,7 @@ internal static class Program
             else
             {
                 CheckLocator();
+                CheckSettings();
                 CheckProtocolAsync().GetAwaiter().GetResult();
                 CheckDispatcher(new CountingProvider(), live: false);
             }
@@ -45,6 +46,17 @@ internal static class Program
             Console.Error.WriteLine($"FAILED: {exception.GetType().Name}: {exception.Message}");
             return 1;
         }
+    }
+
+    /// <summary>验证默认十秒、秒级范围校验和重启后的偏好持久化。</summary>
+    private static void CheckSettings()
+    {
+        var path = Path.Combine(Path.GetTempPath(), "quota-settings-" + Guid.NewGuid().ToString("N"), "settings.json");
+        Check(WidgetSettingsStore.Load(path).RefreshIntervalSeconds == 10, "默认刷新间隔为十秒");
+        WidgetSettingsStore.Save(new WidgetSettings(25), path);
+        Check(WidgetSettingsStore.Load(path).RefreshIntervalSeconds == 25, "刷新间隔可按秒保存");
+        Check(WidgetSettingsStore.Normalize(new WidgetSettings(0)).RefreshIntervalSeconds == 1, "刷新间隔最小为一秒");
+        Check(WidgetSettingsStore.Normalize(new WidgetSettings(5000)).RefreshIntervalSeconds == 3600, "刷新间隔最大为一小时");
     }
 
     /// <summary>构造 npm 存在但桌面原生程序位于散列目录的实际故障布局。</summary>

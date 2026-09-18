@@ -27,10 +27,11 @@ public sealed class QuotaViewModel : INotifyPropertyChanged, IDisposable
     /// <summary>
     /// 初始化真实 Codex 提供器；只有显式传入演示提供器时才使用静态演示数据。
     /// </summary>
-    public QuotaViewModel(IQuotaProvider? provider = null)
+    public QuotaViewModel(IQuotaProvider? provider = null, int refreshIntervalSeconds = 10)
     {
         quotaProvider = provider ?? CreateDefaultProvider();
-        refreshTimer = new DispatcherTimer { Interval = TimeSpan.FromSeconds(10) };
+        RefreshIntervalSeconds = Math.Clamp(refreshIntervalSeconds, 1, 3600);
+        refreshTimer = new DispatcherTimer { Interval = TimeSpan.FromSeconds(RefreshIntervalSeconds) };
         refreshTimer.Tick += RefreshTimerTick;
         _ = RefreshAsync();
         refreshTimer.Start();
@@ -54,9 +55,25 @@ public sealed class QuotaViewModel : INotifyPropertyChanged, IDisposable
         : snapshot is null ? "正在读取额度…" : "会员期限未知 · 重置";
     public string ResetCreditsText => snapshot?.ResetCredits is { } count ? count.ToString() : "--";
     public string ErrorText => errorDetail;
+    public int RefreshIntervalSeconds { get; private set; }
     public string StatusText => errorMessage is not null
         ? errorDetail + (snapshot is null ? "" : " 当前额度保留上次成功结果。")
-        : refreshing ? "正在读取额度…" : "每 10 秒自动刷新；百分比表示剩余额度。";
+        : refreshing ? "正在读取额度…" : $"每 {RefreshIntervalSeconds} 秒自动刷新；百分比表示剩余额度。";
+
+    /// <summary>更新自动刷新间隔并立即作用于后续计时，不启动并行读取。</summary>
+    public void SetRefreshIntervalSeconds(int seconds)
+    {
+        var normalized = Math.Clamp(seconds, 1, 3600);
+        if (normalized == RefreshIntervalSeconds)
+        {
+            return;
+        }
+
+        RefreshIntervalSeconds = normalized;
+        refreshTimer.Interval = TimeSpan.FromSeconds(normalized);
+        OnPropertyChanged(nameof(RefreshIntervalSeconds));
+        OnPropertyChanged(nameof(StatusText));
+    }
 
     /// <summary>
     /// 暴露一次手动刷新入口，复用与定时刷新相同的错误处理和状态通知。
