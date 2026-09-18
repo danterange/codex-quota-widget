@@ -1,5 +1,6 @@
 using System.Windows;
 using System.Windows.Input;
+using System.Windows.Interop;
 using CodexQuotaWidget.ViewModels;
 
 namespace CodexQuotaWidget;
@@ -9,7 +10,11 @@ namespace CodexQuotaWidget;
 /// </summary>
 public partial class MainWindow : Window
 {
-    private readonly QuotaViewModel viewModel = new();
+    private readonly QuotaViewModel viewModel;
+
+    private const int GwlExStyle = -20;
+    private const int WsExToolWindow = 0x00000080;
+    private const int WsExAppWindow = 0x00040000;
 
     /// <summary>
     /// 初始化界面绑定和演示额度数据。
@@ -17,13 +22,41 @@ public partial class MainWindow : Window
     public MainWindow()
     {
         InitializeComponent();
+        viewModel = new QuotaViewModel();
         DataContext = viewModel;
+    }
+
+    /// <summary>
+    /// 将窗口标记为工具窗口，避免任务栏按钮和 Alt+Tab 项目，同时保留顶层悬浮行为。
+    /// </summary>
+    private void WindowSourceInitialized(object? sender, EventArgs e)
+    {
+        var handle = new WindowInteropHelper(this).Handle;
+        var style = GetWindowLong(handle, GwlExStyle);
+        SetWindowLong(handle, GwlExStyle, (style | WsExToolWindow) & ~WsExAppWindow);
     }
 
     /// <summary>
     /// 在窗口首次加载时计算工作区坐标，避免遮挡任务栏并支持不同 DPI 的主屏幕。
     /// </summary>
     private void WindowLoaded(object sender, RoutedEventArgs e)
+    {
+        PositionInWorkArea();
+    }
+
+    /// <summary>
+    /// 等待模板完成布局后再次定位，保证实际高度变化时右下角间距仍然准确。
+    /// </summary>
+    private void WindowContentRendered(object? sender, EventArgs e)
+    {
+        Dispatcher.BeginInvoke(PositionInWorkArea, System.Windows.Threading.DispatcherPriority.ApplicationIdle);
+        Activate();
+    }
+
+    /// <summary>
+    /// 使用当前工作区而不是屏幕边界定位，避开任务栏并兼容负坐标副屏。
+    /// </summary>
+    private void PositionInWorkArea()
     {
         var workArea = SystemParameters.WorkArea;
         Left = workArea.Right - Width - 12;
@@ -63,5 +96,33 @@ public partial class MainWindow : Window
     private void ExitClicked(object sender, RoutedEventArgs e)
     {
         Close();
+    }
+
+    [System.Runtime.InteropServices.DllImport("user32.dll", EntryPoint = "GetWindowLongPtrW")]
+    private static extern nint GetWindowLongPtr(nint handle, int index);
+
+    [System.Runtime.InteropServices.DllImport("user32.dll", EntryPoint = "SetWindowLongPtrW")]
+    private static extern nint SetWindowLongPtr(nint handle, int index, nint value);
+
+    [System.Runtime.InteropServices.DllImport("user32.dll", EntryPoint = "GetWindowLongW")]
+    private static extern int GetWindowLong32(nint handle, int index);
+
+    [System.Runtime.InteropServices.DllImport("user32.dll", EntryPoint = "SetWindowLongW")]
+    private static extern int SetWindowLong32(nint handle, int index, int value);
+
+    private static int GetWindowLong(nint handle, int index)
+    {
+        return nint.Size == 8 ? (int)GetWindowLongPtr(handle, index) : GetWindowLong32(handle, index);
+    }
+
+    private static void SetWindowLong(nint handle, int index, int value)
+    {
+        if (nint.Size == 8)
+        {
+            SetWindowLongPtr(handle, index, value);
+            return;
+        }
+
+        SetWindowLong32(handle, index, value);
     }
 }

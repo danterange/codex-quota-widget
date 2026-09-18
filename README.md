@@ -12,11 +12,12 @@
 
 ## 当前能力
 
-- 右下角固定尺寸悬浮窗，尺寸约 250×148 px。
+- 右下角固定尺寸悬浮窗，尺寸约 224×112 px，尽量减少对桌面的遮挡。
 - 深色、低干扰、接近 VS Code 的界面风格。
 - 展示 5 小时和 7 天两个额度窗口，以及各自的剩余时间。
 - 展示会员到期日期和可用重置次数；接口未提供会员到期字段时显示未知。
 - 窗口可拖动，关闭后释放刷新计时器。
+- 每 10 秒自动刷新额度；刷新中的请求不会并行叠加。
 - 额度数据通过 `IQuotaProvider` 抽象，后续接入真实数据不需要重写 UI。
 - Pro 20× 只有周额度时自动隐藏 5 小时行，不把不存在的额度窗口显示成 0%。
 
@@ -43,7 +44,7 @@ dotnet publish .\CodexQuotaWidget.csproj -c Release -r win-x64 --self-contained 
 ## 目录
 
 - `MainWindow.xaml`：小组件布局和 VS Code 风格视觉。
-- `ViewModels/QuotaViewModel.cs`：倒计时和界面状态。
+- `ViewModels/QuotaViewModel.cs`：倒计时、10 秒刷新和界面状态。
 - `Services/QuotaProvider.cs`：额度提供器接口与本地演示实现。
 
 ## 后续计划

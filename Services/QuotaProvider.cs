@@ -75,7 +75,8 @@ public sealed class CodexQuotaProvider : IQuotaProvider
         var windows = new List<QuotaWindow>();
         AddWindows(limitsResponse, windows);
         var resetCredits = limitsResponse.TryGetProperty("rateLimitResetCredits", out var credits) && credits.ValueKind == JsonValueKind.Object && credits.TryGetProperty("availableCount", out var count) ? count.GetInt32() : (int?)null;
-        return new QuotaSnapshot(accountLabel, plan, windows.Find(window => window.Label == "5h"), windows.Find(window => window.Label == "7d"), null, resetCredits) { AccountKey = accountId ?? accountLabel };
+        var membershipExpiresAt = FindMembershipExpiry(account);
+        return new QuotaSnapshot(accountLabel, plan, windows.Find(window => window.Label == "5h"), windows.Find(window => window.Label == "7d"), membershipExpiresAt, resetCredits) { AccountKey = accountId ?? accountLabel };
     }
 
     /// <summary>收集单桶或多桶响应中的非空窗口。</summary>
@@ -84,6 +85,35 @@ public sealed class CodexQuotaProvider : IQuotaProvider
         if (response.TryGetProperty("rateLimitsByLimitId", out var byLimitId) && byLimitId.ValueKind == JsonValueKind.Object)
             foreach (var item in byLimitId.EnumerateObject()) AddWindowsFromSnapshot(item.Value, windows);
         else if (response.TryGetProperty("rateLimits", out var single)) AddWindowsFromSnapshot(single, windows);
+    }
+
+    /// <summary>兼容不同 app-server 版本可能使用的会员到期字段。</summary>
+    private static DateTimeOffset? FindMembershipExpiry(JsonElement account)
+    {
+        if (account.ValueKind != JsonValueKind.Object)
+        {
+            return null;
+        }
+
+        foreach (var name in new[] { "membershipExpiresAt", "subscriptionExpiresAt", "planExpiresAt", "expiresAt" })
+        {
+            if (!account.TryGetProperty(name, out var value))
+            {
+                continue;
+            }
+
+            if (value.ValueKind == JsonValueKind.Number && value.TryGetInt64(out var unixSeconds))
+            {
+                return DateTimeOffset.FromUnixTimeSeconds(unixSeconds).ToLocalTime();
+            }
+
+            if (value.ValueKind == JsonValueKind.String && DateTimeOffset.TryParse(value.GetString(), out var parsed))
+            {
+                return parsed.ToLocalTime();
+            }
+        }
+
+        return null;
     }
 
     /// <summary>根据 primary/secondary 的分钟数确定标签；未知窗口不伪造为支持的额度。</summary>

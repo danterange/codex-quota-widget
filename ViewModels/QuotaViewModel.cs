@@ -10,12 +10,13 @@ using CodexQuotaWidget.Services;
 namespace CodexQuotaWidget.ViewModels;
 
 /// <summary>
-/// 将额度快照转换为紧凑文本和进度值，并按分钟刷新倒计时显示。
+/// 将额度快照转换为紧凑文本和进度值，并按十秒刷新倒计时显示。
 /// </summary>
 public sealed class QuotaViewModel : INotifyPropertyChanged, IDisposable
 {
     private readonly IQuotaProvider quotaProvider;
     private readonly DispatcherTimer refreshTimer;
+    private readonly SemaphoreSlim refreshGate = new(1, 1);
     private QuotaSnapshot? snapshot;
     private string? errorMessage;
     private bool disposed;
@@ -26,7 +27,7 @@ public sealed class QuotaViewModel : INotifyPropertyChanged, IDisposable
     public QuotaViewModel(IQuotaProvider? provider = null)
     {
         quotaProvider = provider ?? CreateDefaultProvider();
-        refreshTimer = new DispatcherTimer { Interval = TimeSpan.FromMinutes(1) };
+        refreshTimer = new DispatcherTimer { Interval = TimeSpan.FromSeconds(10) };
         refreshTimer.Tick += RefreshTimerTick;
         _ = RefreshAsync();
         refreshTimer.Start();
@@ -79,21 +80,33 @@ public sealed class QuotaViewModel : INotifyPropertyChanged, IDisposable
     /// </summary>
     private async Task RefreshAsync()
     {
-        try
-        {
-            snapshot = await quotaProvider.GetSnapshotAsync(CancellationToken.None);
-            errorMessage = null;
-        }
-        catch (OperationCanceledException)
+        if (!await refreshGate.WaitAsync(0))
         {
             return;
         }
-        catch (Exception exception) when (exception is InvalidOperationException or IOException or JsonException or Win32Exception)
-        {
-            errorMessage = "额度读取失败";
-        }
 
-        OnPropertyChanged(string.Empty);
+        try
+        {
+            try
+            {
+                snapshot = await quotaProvider.GetSnapshotAsync(CancellationToken.None);
+                errorMessage = null;
+            }
+            catch (OperationCanceledException)
+            {
+                return;
+            }
+            catch (Exception exception) when (exception is InvalidOperationException or IOException or JsonException or Win32Exception)
+            {
+                errorMessage = "额度读取失败";
+            }
+
+            OnPropertyChanged(string.Empty);
+        }
+        finally
+        {
+            refreshGate.Release();
+        }
     }
 
     /// <summary>
