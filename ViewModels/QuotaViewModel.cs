@@ -17,8 +17,11 @@ public sealed class QuotaViewModel : INotifyPropertyChanged, IDisposable
     private readonly IQuotaProvider quotaProvider;
     private readonly DispatcherTimer refreshTimer;
     private readonly SemaphoreSlim refreshGate = new(1, 1);
+    private readonly CancellationTokenSource lifetime = new();
     private QuotaSnapshot? snapshot;
     private string? errorMessage;
+    private string errorDetail = string.Empty;
+    private bool refreshing;
     private bool disposed;
 
     /// <summary>
@@ -48,9 +51,12 @@ public sealed class QuotaViewModel : INotifyPropertyChanged, IDisposable
         ? errorMessage
         : snapshot?.MembershipExpiresAt is { } expiry
         ? $"会员至 {expiry:MM/dd} · 重置"
-        : "会员期限未知 · 重置";
+        : snapshot is null ? "正在读取额度…" : "会员期限未知 · 重置";
     public string ResetCreditsText => snapshot?.ResetCredits is { } count ? count.ToString() : "--";
-    public string ErrorText => errorMessage ?? string.Empty;
+    public string ErrorText => errorDetail;
+    public string StatusText => errorMessage is not null
+        ? errorDetail + (snapshot is null ? "" : " 当前额度保留上次成功结果。")
+        : refreshing ? "正在读取额度…" : "每 10 秒自动刷新；百分比表示剩余额度。";
 
     /// <summary>
     /// 暴露一次手动刷新入口，复用与定时刷新相同的错误处理和状态通知。
@@ -61,7 +67,7 @@ public sealed class QuotaViewModel : INotifyPropertyChanged, IDisposable
     }
 
     /// <summary>
-    /// 释放计时器事件，避免窗口关闭后仍保留 UI 线程回调。
+    /// 停止定时器并取消进行中的读取，窗口关闭后不再更新绑定。
     /// </summary>
     public void Dispose()
     {
@@ -73,6 +79,12 @@ public sealed class QuotaViewModel : INotifyPropertyChanged, IDisposable
         disposed = true;
         refreshTimer.Tick -= RefreshTimerTick;
         refreshTimer.Stop();
+        lifetime.Cancel();
+        if (!refreshing)
+        {
+            lifetime.Dispose();
+            refreshGate.Dispose();
+        }
     }
 
     /// <summary>
@@ -80,32 +92,54 @@ public sealed class QuotaViewModel : INotifyPropertyChanged, IDisposable
     /// </summary>
     private async Task RefreshAsync()
     {
-        if (!await refreshGate.WaitAsync(0))
+        if (disposed || !await refreshGate.WaitAsync(0))
         {
             return;
         }
 
+        refreshing = true;
+        OnPropertyChanged(nameof(StatusText));
         try
         {
             try
             {
-                snapshot = await quotaProvider.GetSnapshotAsync(CancellationToken.None);
+                snapshot = await quotaProvider.GetSnapshotAsync(lifetime.Token);
                 errorMessage = null;
+                errorDetail = string.Empty;
             }
-            catch (OperationCanceledException)
+            catch (OperationCanceledException) when (disposed)
             {
                 return;
             }
-            catch (Exception exception) when (exception is InvalidOperationException or IOException or JsonException or Win32Exception)
+            catch (QuotaReadException exception)
+            {
+                errorMessage = exception.Message;
+                errorDetail = exception.Detail;
+            }
+            catch (OperationCanceledException)
+            {
+                errorMessage = "读取超时";
+                errorDetail = "额度读取被取消或超时，组件会自动重试。";
+            }
+            catch (Exception exception) when (exception is InvalidOperationException or IOException or JsonException or FormatException or OverflowException or Win32Exception or UnauthorizedAccessException or ArgumentException or System.Collections.Generic.KeyNotFoundException)
             {
                 errorMessage = "额度读取失败";
+                errorDetail = "Codex 启动、通信或响应解析失败，请检查安装和网络后重试。";
             }
-
-            OnPropertyChanged(string.Empty);
         }
         finally
         {
+            refreshing = false;
             refreshGate.Release();
+            if (disposed)
+            {
+                lifetime.Dispose();
+                refreshGate.Dispose();
+            }
+            else
+            {
+                OnPropertyChanged(string.Empty);
+            }
         }
     }
 

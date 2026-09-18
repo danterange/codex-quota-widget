@@ -9,4 +9,7 @@
     <RootNamespace>CodexQuotaWidget</RootNamespace>
     <Platforms>AnyCPU</Platforms>
   </PropertyGroup>
+  <ItemGroup>
+    <Compile Remove="tests/**/*.cs" />
+  </ItemGroup>
 </Project>

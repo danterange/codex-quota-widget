@@ -22,6 +22,7 @@
         Closed="WindowClosed"
         MouseLeftButtonDown="WindowMouseLeftButtonDown">
     <Border Margin="0"
+            ToolTip="{Binding StatusText}"
             Padding="10,8,10,7"
             Background="{StaticResource PanelBrush}"
             BorderBrush="{StaticResource PanelBorderBrush}"
@@ -55,7 +56,7 @@
                 <Border Grid.Column="2" Margin="6,0,0,0" Padding="5,1" VerticalAlignment="Center" Background="#333333" CornerRadius="3">
                     <TextBlock Text="{Binding PlanName}" FontSize="12" Foreground="#C8C8C8" />
                 </Border>
-                <Button Grid.Column="4" Width="22" Height="20" Padding="0" BorderThickness="0" Background="Transparent" Foreground="{StaticResource SecondaryTextBrush}" FontSize="14" Content="⇄" ToolTip="切换账号" />
+                <Button Grid.Column="4" Width="22" Height="20" Padding="0" BorderThickness="0" Background="Transparent" Foreground="{StaticResource SecondaryTextBrush}" FontSize="14" Content="↻" ToolTip="立即刷新额度" Click="RefreshClicked" />
             </Grid>
 
             <Grid Grid.Row="1" Margin="0,4,0,0" Visibility="{Binding FiveHourVisibility}">

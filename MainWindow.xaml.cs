@@ -17,7 +17,7 @@ public partial class MainWindow : Window
     private const int WsExAppWindow = 0x00040000;
 
     /// <summary>
-    /// 初始化界面绑定和演示额度数据。
+    /// 初始化界面绑定和真实或演示额度提供器。
     /// </summary>
     public MainWindow()
     {

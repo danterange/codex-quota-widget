@@ -1,7 +1,7 @@
 namespace CodexQuotaWidget.Models;
 
 /// <summary>
-/// 描述一个额度时间窗口的展示数据；Percent 使用 0 到 100 的范围。
+/// 描述一个额度时间窗口的展示数据；Percent 使用 0 到 100 的范围，表示剩余额度。
 /// </summary>
 public sealed record QuotaWindow(string Label, double Percent, DateTimeOffset? ResetAt);
 
