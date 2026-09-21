@@ -13,6 +13,7 @@ public partial class App : System.Windows.Application
 {
     private static readonly int[] RefreshIntervalOptions = { 5, 10, 30, 60, 120 };
     private Forms.NotifyIcon? trayIcon;
+    private Icon? applicationIcon;
     private WidgetSettings settings = new();
     /// <summary>
     /// 显式创建并显示主窗口，避免无标题栏悬浮窗在启动 URI 初始化阶段被隐藏。
@@ -29,6 +30,10 @@ public partial class App : System.Windows.Application
     /// <summary>创建托盘图标和菜单，保证无标题栏悬浮窗仍有可靠的退出入口。</summary>
     private void CreateTrayIcon()
     {
+        // 从程序集资源加载，安装路径和当前工作目录不会影响托盘图标。
+        using var iconStream = GetResourceStream(new Uri("pack://application:,,,/assets/app.ico")).Stream;
+        using var sourceIcon = new Icon(iconStream, Forms.SystemInformation.SmallIconSize);
+        applicationIcon = (Icon) sourceIcon.Clone();
         var menu = new Forms.ContextMenuStrip();
         menu.Items.Add("刷新额度", null, TrayRefreshClicked);
         var intervalMenu = new Forms.ToolStripMenuItem("刷新间隔");
@@ -43,7 +48,7 @@ public partial class App : System.Windows.Application
         menu.Items.Add("退出小组件", null, TrayExitClicked);
         trayIcon = new Forms.NotifyIcon
         {
-            Icon = SystemIcons.Application,
+            Icon = applicationIcon,
             Text = "Codex 额度",
             ContextMenuStrip = menu,
             Visible = true
@@ -98,8 +103,6 @@ public partial class App : System.Windows.Application
     /// <summary>通过托盘菜单关闭窗口和托盘资源，确保进程完全退出。</summary>
     private void TrayExitClicked(object? sender, EventArgs e)
     {
-        trayIcon?.Dispose();
-        trayIcon = null;
         MainWindow?.Close();
         Shutdown();
     }
@@ -107,8 +110,12 @@ public partial class App : System.Windows.Application
     /// <summary>应用退出时释放托盘图标，即使窗口通过系统消息关闭也不遗留图标。</summary>
     protected override void OnExit(ExitEventArgs e)
     {
+        var menu = trayIcon?.ContextMenuStrip;
         trayIcon?.Dispose();
         trayIcon = null;
+        menu?.Dispose();
+        applicationIcon?.Dispose();
+        applicationIcon = null;
         base.OnExit(e);
     }
 }
