@@ -25,7 +25,15 @@
 - 额度数据通过 `IQuotaProvider` 抽象，后续接入真实数据不需要重写 UI。
 - Pro 20× 只有周额度时自动隐藏 5 小时行，不把不存在的额度窗口显示成 0%。
 
-## 运行
+## 下载与安装
+
+[下载最新版本](https://github.com/danterange/codex-quota-widget/releases/latest)
+
+Windows 10/11 x64 用户下载 `*-setup.exe` 后双击安装；也可以下载 ZIP，全部解压后运行 `CodexQuotaWidget.exe`。两者都自带 .NET 8 运行时，不需要安装 SDK。
+
+真实额度需要本机已安装并登录 Codex。安装包尚未签名，Windows 可能显示未知发布者提示。后续升级时退出小组件，再安装新版；当前没有程序内自动更新。
+
+## 从源码运行
 
 需要 Windows、.NET 8 SDK 和桌面运行时：
 
@@ -49,11 +57,13 @@ dotnet run --project .\tests\QuotaChecks\QuotaChecks.csproj -c Release
 dotnet .\tests\QuotaChecks\bin\Release\net8.0-windows\QuotaChecks.dll --live
 ```
 
-发布单文件版本：
+构建自包含安装包和免安装 ZIP（需要 Inno Setup 6）：
 
 ```powershell
-dotnet publish .\CodexQuotaWidget.csproj -c Release -r win-x64 --self-contained false
+./scripts/Build-Release.ps1
 ```
+
+发布者操作步骤和自动发布说明见 [版本发布文档](docs/RELEASING.md)。
 
 ## 目录
 
@@ -63,7 +73,7 @@ dotnet publish .\CodexQuotaWidget.csproj -c Release -r win-x64 --self-contained 
 
 ## 后续计划
 
-1. 增加系统托盘入口和开机启动选项。
+1. 增加开机启动选项。
 2. 增加账号切换配置，但主悬浮窗始终只展示一个当前账号。
 3. 在当前 app-server 能力之外补充可读取的会员到期数据源。
 

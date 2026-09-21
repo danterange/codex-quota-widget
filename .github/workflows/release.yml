@@ -1,0 +1,88 @@
+name: Release
+on:
+  push:
+    tags: ['v*']
+  workflow_dispatch:
+permissions:
+  contents: read
+concurrency:
+  group: release-${{ github.ref }}
+  cancel-in-progress: false
+jobs:
+  build:
+    runs-on: windows-2022
+    timeout-minutes: 25
+    outputs:
+      version: ${{ steps.version.outputs.version }}
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+      - uses: actions/setup-dotnet@67a3573c9a986a3f9c594539f4ab511d57bb3ce9 # v4
+        with:
+          dotnet-version: '8.0.x'
+      - name: Validate version
+        id: version
+        shell: pwsh
+        run: |
+          [xml]$project = Get-Content CodexQuotaWidget.csproj
+          $version = $project.Project.PropertyGroup.Version
+          if ($version -notmatch '^\d+\.\d+\.\d+(?:-[0-9A-Za-z.-]+)?$') { throw 'Invalid project version' }
+          if ($env:GITHUB_REF_TYPE -eq 'tag' -and $env:GITHUB_REF_NAME -cne "v$version") { throw 'Tag must match the project Version' }
+          "version=$version" >> $env:GITHUB_OUTPUT
+      - name: Regression checks
+        shell: pwsh
+        run: |
+          dotnet run --project tests/QuotaChecks/QuotaChecks.csproj -c Release
+          if ($LASTEXITCODE -ne 0) { throw 'Regression checks failed' }
+      - name: Build installer and portable ZIP
+        shell: pwsh
+        run: ./scripts/Build-Release.ps1
+      - name: Install, launch, reinstall and uninstall
+        shell: powershell
+        run: ./scripts/Test-Release.ps1
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: release-files
+          path: |
+            artifacts/*.exe
+            artifacts/*.zip
+            artifacts/SHA256SUMS.txt
+          if-no-files-found: error
+  publish:
+    if: github.event_name == 'push' && startsWith(github.ref, 'refs/tags/v')
+    needs: build
+    runs-on: windows-2022
+    timeout-minutes: 10
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+      - name: Download build artifacts
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh run download $env:GITHUB_RUN_ID --name release-files --dir artifacts
+          if ($LASTEXITCODE -ne 0) { throw 'Artifact download failed' }
+      - name: Publish complete release
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ github.token }}
+          RELEASE_VERSION: ${{ needs.build.outputs.version }}
+        run: |
+          $tag = $env:GITHUB_REF_NAME
+          $version = $env:RELEASE_VERSION
+          $files = @("artifacts/codex-quota-widget-v$version-windows-x64-setup.exe", "artifacts/codex-quota-widget-v$version-windows-x64.zip", 'artifacts/SHA256SUMS.txt')
+          $notes = "docs/releases/$tag.md"
+          $existing = gh release view $tag --json isDraft 2>$null
+          if ($LASTEXITCODE -eq 0) {
+            if (-not ($existing | ConvertFrom-Json).isDraft) { throw 'Release is already public; publish a new version instead of replacing it.' }
+          } else {
+            $noteArgs = if (Test-Path -LiteralPath $notes) { @('--notes-file', $notes) } else { @('--generate-notes') }
+            gh release create $tag --verify-tag --draft --title "Codex Quota Widget $tag" @noteArgs
+            if ($LASTEXITCODE -ne 0) { throw 'Draft creation failed' }
+          }
+          gh release upload $tag @files --clobber
+          if ($LASTEXITCODE -ne 0) { throw 'Release upload failed' }
+          $releaseArgs = if ($version.Contains('-')) { @('--prerelease', '--latest=false') } else { @('--latest') }
+          gh release edit $tag --draft=false @releaseArgs
+          if ($LASTEXITCODE -ne 0) { throw 'Release publication failed' }
