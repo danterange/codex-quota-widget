@@ -39,7 +39,7 @@ function Test-Application {
     param([string]$Executable)
     # Keep the WPF window visible; hiding the process also hides its top-level window
     # and makes UI Automation report a false negative even though the app is running.
-    # The self-contained host resolves native runtime files from its launch directory.
+    # Match the working directory used by the installed shortcut.
     $process = Start-Process -FilePath $Executable -WorkingDirectory (Split-Path -Parent $Executable) -ArgumentList '--demo' -PassThru
     $window = $null
     try {
@@ -55,12 +55,8 @@ function Test-Application {
             }
             Start-Sleep -Milliseconds 250
         } while ([DateTime]::UtcNow -lt $deadline)
-        if ($null -eq $window) { throw 'Shipped EXE did not create a visible WPF window' }
-        if ($names -contains '42%' -and $names -contains '68%') {
-            Write-Output '[OK] Shipped EXE rendered 42% and 68% demo quotas'
-        } else {
-            Write-Output '[OK] Shipped EXE created a visible WPF window; UI Automation did not expose bound text'
-        }
+        if ($null -eq $window -or $names -notcontains '42%' -or $names -notcontains '68%') { throw 'Demo window did not render quota values' }
+        Write-Output '[OK] Shipped EXE rendered 42% and 68% demo quotas'
     } finally {
         if ($null -ne $window -and -not $process.HasExited) {
             [void][ReleaseWindow]::PostMessage([IntPtr]$window.Current.NativeWindowHandle, 0x0010, [IntPtr]::Zero, [IntPtr]::Zero)
@@ -73,11 +69,15 @@ function Test-Application {
 # Wait for installer completion and propagate native failures instead of trusting launch success.
 function Invoke-Installer {
     param([string]$Executable, [string[]]$Arguments)
-    & $Executable @Arguments
-    $exitCode = if (Test-Path -LiteralPath variable:LASTEXITCODE) { $LASTEXITCODE } else { 0 }
-    if ($exitCode -ne 0) { throw "Installer exited with $exitCode" }
+    # Direct invocation of a GUI EXE may return before it completes in PowerShell.
+    # Quote each argument for Start-Process, which joins its array into one command line.
+    $quotedArguments = @($Arguments | ForEach-Object { '"' + $_ + '"' })
+    $process = Start-Process -FilePath $Executable -ArgumentList $quotedArguments -WindowStyle Hidden -PassThru -Wait
+    try { if ($process.ExitCode -ne 0) { throw "Installer exited with $($process.ExitCode)" } }
+    finally { $process.Dispose() }
 }
 
+# Confirm the completed installer placed the application in the requested directory.
 function Wait-ForFile {
     param([string]$Path)
     $deadline = [DateTime]::UtcNow.AddSeconds(30)
@@ -87,6 +87,7 @@ function Wait-ForFile {
     if (-not (Test-Path -LiteralPath $Path -PathType Leaf)) { throw "Installer did not create: $Path" }
 }
 
+# Allow delayed uninstaller cleanup while still failing on retained application files.
 function Wait-ForMissingFile {
     param([string]$Path)
     $deadline = [DateTime]::UtcNow.AddSeconds(30)
@@ -107,12 +108,10 @@ try {
     Invoke-Installer -Executable $setup -Arguments $installArgs
     $exe = Join-Path $installRoot 'CodexQuotaWidget.exe'
     Wait-ForFile -Path $exe
-    Start-Sleep -Seconds 5
     if ((Get-Item -LiteralPath $exe).VersionInfo.ProductVersion -notlike "$version*") { throw 'Installed EXE version mismatch' }
     Test-Application -Executable $exe
     Invoke-Installer -Executable $setup -Arguments $installArgs
     Wait-ForFile -Path $exe
-    Start-Sleep -Seconds 5
     Test-Application -Executable $exe
     Write-Output '[OK] Reinstall completed and application still runs'
     Add-Type -AssemblyName System.IO.Compression.FileSystem
