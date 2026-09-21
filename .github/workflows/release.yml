@@ -84,6 +84,6 @@ jobs:
           }
           gh release upload $tag @files --clobber
           if ($LASTEXITCODE -ne 0) { throw 'Release upload failed' }
-          $releaseArgs = if ($version.Contains('-')) { @('--prerelease', '--latest=false') } else { @('--latest') }
+          $releaseArgs = if ($version.Contains('-')) { @('--prerelease') } else { @('--latest') }
           gh release edit $tag --draft=false @releaseArgs
           if ($LASTEXITCODE -ne 0) { throw 'Release publication failed' }
