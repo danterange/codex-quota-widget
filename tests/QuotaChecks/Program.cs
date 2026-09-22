@@ -86,6 +86,8 @@ internal static class Program
         var expectedEnglish = $"Expires: {localExpiry:yyyy/MM/dd HH:mm:ss} ({(int)remaining.TotalDays}d {remaining.Hours}h {remaining.Minutes}m left)";
         Check(QuotaViewModel.FormatMembershipExpiry(expiry, now, AppLanguage.SimplifiedChinese)
             == expectedChinese, "中文会员到期格式精确匹配");
+        Check(QuotaViewModel.FormatExpiryCountdown(expiry, now, AppLanguage.SimplifiedChinese)
+            == expectedChinese, "中文额度条到期格式精确匹配");
         Check(QuotaViewModel.FormatMembershipExpiry(expiry, now, AppLanguage.English)
             == expectedEnglish, "英文会员到期格式正确");
         Check(QuotaViewModel.SelectMembershipExpiry(expiry, now) == expiry

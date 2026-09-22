@@ -46,9 +46,7 @@ function Test-Application {
     try {
         $deadline = [DateTime]::UtcNow.AddSeconds(20)
         # 同一 PID 可能有输入法等辅助 Pane；只接受真正承载 WPF 内容的 Window，避免误向辅助窗口发送关闭消息。
-        $condition = [System.Windows.Automation.AndCondition]::new(
-            [System.Windows.Automation.PropertyCondition]::new([System.Windows.Automation.AutomationElement]::ProcessIdProperty, $process.Id),
-            [System.Windows.Automation.PropertyCondition]::new([System.Windows.Automation.AutomationElement]::ControlTypeProperty, [System.Windows.Automation.ControlType]::Window))
+        $condition = [System.Windows.Automation.AndCondition]::new([System.Windows.Automation.PropertyCondition]::new([System.Windows.Automation.AutomationElement]::ProcessIdProperty, $process.Id), [System.Windows.Automation.PropertyCondition]::new([System.Windows.Automation.AutomationElement]::ControlTypeProperty, [System.Windows.Automation.ControlType]::Window))
         do {
             if ($process.HasExited) { throw "Application exited early: $($process.ExitCode)" }
             $process.Refresh()

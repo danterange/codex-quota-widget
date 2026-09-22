@@ -219,32 +219,12 @@ public sealed class QuotaViewModel : INotifyPropertyChanged, IDisposable
         return quotaWindow is null ? "--" : $"{quotaWindow.Percent:0}%";
     }
 
-    /// <summary>
-    /// 将未来的额度重置时间按当前界面语言压缩为天、小时、分钟文本，避免 English 界面残留中文“现在”。
-    /// </summary>
+    /// <summary>将额度窗口重置时间显示为绝对到期时间和剩余天、时、分。</summary>
     private string FormatRemaining(DateTimeOffset? resetAt)
     {
-        if (resetAt is null)
-        {
-            return "--";
-        }
-
-        var remaining = resetAt.Value - DateTimeOffset.Now;
-        if (remaining <= TimeSpan.Zero)
-        {
-            return language == AppLanguage.English ? "now" : "现在";
-        }
-
-        if (remaining.TotalDays >= 1)
-        {
-            return language == AppLanguage.English
-                ? $"{(int) remaining.TotalDays}d {remaining.Hours:00}h"
-                : $"{(int) remaining.TotalDays}天{remaining.Hours:00}小时";
-        }
-
-        return language == AppLanguage.English
-            ? $"{(int) remaining.TotalHours}h {remaining.Minutes:00}m"
-            : $"{(int) remaining.TotalHours}小时{remaining.Minutes:00}分";
+        return resetAt is null
+            ? "--"
+            : FormatExpiryCountdown(resetAt.Value, DateTimeOffset.Now, language);
     }
 
     /// <summary>将提供器预定义的错误标题映射为当前界面语言，避免英语界面夹杂中文错误名称。</summary>
@@ -312,6 +292,14 @@ public sealed class QuotaViewModel : INotifyPropertyChanged, IDisposable
     /// 按指定语言和参考时刻生成会员到期文本；剩余时间向下取整到分钟，保证中文格式与用户指定的天、时、分表达一致。
     /// </summary>
     public static string FormatMembershipExpiry(DateTimeOffset expiry, DateTimeOffset now, AppLanguage language)
+    {
+        return FormatExpiryCountdown(expiry, now, language);
+    }
+
+    /// <summary>
+    /// 生成额度或会员到期文本；中文使用“到期：yyyy/MM/dd HH:mm:ss(剩余n天n小时n分)”格式。
+    /// </summary>
+    public static string FormatExpiryCountdown(DateTimeOffset expiry, DateTimeOffset now, AppLanguage language)
     {
         var localExpiry = expiry.ToLocalTime();
         var localNow = now.ToLocalTime();

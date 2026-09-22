@@ -5,6 +5,8 @@ namespace CodexQuotaWidget.Models;
 /// </summary>
 public sealed record LocalizedText(
     string WindowTitle,
+    string MonitorSubtitle,
+    string LiveStatus,
     string DashboardTab,
     string SettingsTab,
     string RefreshNow,
@@ -43,6 +45,8 @@ public static class LocalizedTextProvider
         return language == AppLanguage.English
             ? new LocalizedText(
                 "Codex Quota Widget",
+                "QUOTA MONITOR",
+                "LIVE",
                 "Dashboard",
                 "Settings",
                 "Refresh now",
@@ -53,7 +57,7 @@ public static class LocalizedTextProvider
                 "60 seconds",
                 "120 seconds",
                 "Membership expiry",
-                "Automatic data is preferred. Enter a local fallback only when it is unavailable.",
+                "Automatic first; use a local date only if unavailable.",
                 "yyyy/MM/dd HH:mm:ss (leave blank to clear)",
                 "Save",
                 "Launch at sign-in",
@@ -73,6 +77,8 @@ public static class LocalizedTextProvider
                 "Reset credits")
             : new LocalizedText(
                 "Codex 额度",
+                "额度监控",
+                "运行中",
                 "额度",
                 "设置",
                 "刷新额度",
@@ -83,7 +89,7 @@ public static class LocalizedTextProvider
                 "60 秒",
                 "120 秒",
                 "会员到期时间",
-                "优先使用 Codex 自动数据；自动数据缺失时才使用本地手动日期。",
+                "自动优先；缺失时使用本地日期。",
                 "yyyy/MM/dd HH:mm:ss（留空可清除）",
                 "保存",
                 "开机时启动",

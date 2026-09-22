@@ -3,120 +3,235 @@
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
         Title="{Binding Text.WindowTitle}"
         Icon="assets/app.ico"
-        Width="510"
-        Height="315"
-        MinWidth="510"
-        MaxWidth="510"
-        MinHeight="315"
-        MaxHeight="315"
+        SizeToContent="WidthAndHeight"
+        MinWidth="420"
+        MinHeight="270"
         WindowStartupLocation="CenterScreen"
-        ResizeMode="NoResize"
+        Topmost="True"
+        WindowStyle="None"
+        ResizeMode="CanResize"
         ShowInTaskbar="False"
-        Background="{StaticResource PanelBrush}"
+        Background="Transparent"
+        SizeChanged="MainWindowSizeChanged"
         Loaded="MainWindowLoaded"
         Closing="MainWindowClosing"
         Closed="MainWindowClosed">
-    <Grid Margin="10">
-        <TabControl Background="{StaticResource PanelBrush}" BorderBrush="{StaticResource PanelBorderBrush}">
-            <TabItem Header="{Binding Text.DashboardTab}">
-                <Border Padding="12,10" Background="{StaticResource PanelBrush}">
+    <Border Background="{StaticResource PanelBrush}" BorderBrush="{StaticResource PanelBorderBrush}" BorderThickness="1" CornerRadius="14" Effect="{StaticResource CardShadow}" SnapsToDevicePixels="True">
+        <Grid>
+            <Grid.RowDefinitions>
+                <RowDefinition Height="42" />
+                <RowDefinition Height="*" />
+            </Grid.RowDefinitions>
+
+            <Grid Grid.Row="0" Background="{StaticResource SurfaceBrush}" MouseLeftButtonDown="WindowHeaderMouseLeftButtonDown">
+                <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="34" />
+                    <ColumnDefinition Width="*" />
+                    <ColumnDefinition Width="Auto" />
+                </Grid.ColumnDefinitions>
+                <Border Grid.Column="0" Width="24" Height="24" Margin="10,0,0,0" Background="{StaticResource AccentSoftBrush}" CornerRadius="8">
+                    <Image Width="16" Height="16" Source="assets/app.ico" />
+                </Border>
+                <StackPanel Grid.Column="1" Margin="10,0,0,0" VerticalAlignment="Center">
+                    <TextBlock Text="{Binding Text.WindowTitle}" FontSize="13" FontWeight="SemiBold" />
+                    <TextBlock Text="{Binding Text.MonitorSubtitle}" FontSize="9" Foreground="{StaticResource MutedTextBrush}" FontWeight="SemiBold" />
+                </StackPanel>
+                <Border Grid.Column="2" Margin="0,0,14,0" Padding="8,3" Background="{StaticResource AccentSoftBrush}" CornerRadius="8" VerticalAlignment="Center" AutomationProperties.Name="{Binding Text.LiveStatus}">
+                    <StackPanel Orientation="Horizontal">
+                        <Ellipse Width="6" Height="6" Margin="0,0,5,0" Fill="{StaticResource SuccessBrush}" VerticalAlignment="Center" />
+                        <TextBlock Text="{Binding Text.LiveStatus}" FontSize="9" Foreground="{StaticResource AccentBrush}" FontWeight="SemiBold" />
+                    </StackPanel>
+                </Border>
+            </Grid>
+
+            <Grid Grid.Row="1" Margin="8,2,8,8">
+                <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="60" />
+                    <ColumnDefinition Width="*" />
+                </Grid.ColumnDefinitions>
+
+                <Border Grid.Column="0" Padding="8,10" Background="{StaticResource RailBrush}" BorderBrush="{StaticResource CardBorderBrush}" BorderThickness="1" CornerRadius="12" ClipToBounds="True">
                     <Grid>
                         <Grid.RowDefinitions>
-                            <RowDefinition Height="28" />
-                            <RowDefinition Height="Auto" />
-                            <RowDefinition Height="Auto" />
+                            <RowDefinition Height="*" />
                             <RowDefinition Height="Auto" />
                         </Grid.RowDefinitions>
-
-                        <Grid Grid.Row="0">
-                            <Grid.ColumnDefinitions>
-                                <ColumnDefinition Width="Auto" />
-                                <ColumnDefinition Width="Auto" />
-                                <ColumnDefinition Width="*" />
-                                <ColumnDefinition Width="Auto" />
-                            </Grid.ColumnDefinitions>
-                            <Ellipse Grid.Column="0" Width="8" Height="8" Margin="0,0,7,0" VerticalAlignment="Center" Fill="{StaticResource AccentBrush}" />
-                            <TextBlock Grid.Column="1" Text="Codex" FontSize="16" FontWeight="SemiBold" VerticalAlignment="Center" />
-                            <Border Grid.Column="2" Margin="7,0,0,0" Padding="5,1" HorizontalAlignment="Left" VerticalAlignment="Center" Background="#333333" CornerRadius="3">
-                                <TextBlock Text="{Binding PlanName}" FontSize="12" Foreground="#C8C8C8" />
-                            </Border>
-                            <Button Grid.Column="3" Width="92" Height="23" Padding="5,0" Content="{Binding Text.RefreshNow}" ToolTip="{Binding StatusText}" Click="RefreshClicked" />
-                        </Grid>
-
-                        <Grid Grid.Row="1" Margin="0,8,0,0" Visibility="{Binding FiveHourVisibility}">
-                            <Grid.ColumnDefinitions>
-                                <ColumnDefinition Width="28" />
-                                <ColumnDefinition Width="*" />
-                                <ColumnDefinition Width="42" />
-                                <ColumnDefinition Width="48" />
-                            </Grid.ColumnDefinitions>
-                            <TextBlock Grid.Column="0" Text="5h" FontSize="13" Foreground="{StaticResource SecondaryTextBrush}" VerticalAlignment="Center" />
-                            <ProgressBar Grid.Column="1" Height="6" Margin="0,0,7,0" VerticalAlignment="Center" Minimum="0" Maximum="100" Value="{Binding FiveHourPercent, Mode=OneWay}" Background="#333333" Foreground="{StaticResource AccentBrush}" BorderThickness="0" />
-                            <TextBlock Grid.Column="2" Text="{Binding FiveHourPercentText}" FontSize="13" HorizontalAlignment="Right" VerticalAlignment="Center" />
-                            <TextBlock Grid.Column="3" Text="{Binding FiveHourResetText}" FontSize="12" Foreground="{StaticResource SecondaryTextBrush}" HorizontalAlignment="Right" VerticalAlignment="Center" />
-                        </Grid>
-
-                        <Grid Grid.Row="2" Margin="0,5,0,0" Visibility="{Binding SevenDayVisibility}">
-                            <Grid.ColumnDefinitions>
-                                <ColumnDefinition Width="28" />
-                                <ColumnDefinition Width="*" />
-                                <ColumnDefinition Width="42" />
-                                <ColumnDefinition Width="48" />
-                            </Grid.ColumnDefinitions>
-                            <TextBlock Grid.Column="0" Text="7d" FontSize="13" Foreground="{StaticResource SecondaryTextBrush}" VerticalAlignment="Center" />
-                            <ProgressBar Grid.Column="1" Height="6" Margin="0,0,7,0" VerticalAlignment="Center" Minimum="0" Maximum="100" Value="{Binding SevenDayPercent, Mode=OneWay}" Background="#333333" Foreground="{StaticResource WeeklyBrush}" BorderThickness="0" />
-                            <TextBlock Grid.Column="2" Text="{Binding SevenDayPercentText}" FontSize="13" HorizontalAlignment="Right" VerticalAlignment="Center" />
-                            <TextBlock Grid.Column="3" Text="{Binding SevenDayResetText}" FontSize="12" Foreground="{StaticResource SecondaryTextBrush}" HorizontalAlignment="Right" VerticalAlignment="Center" />
-                        </Grid>
-
-                        <Grid Grid.Row="3" Margin="0,12,0,0">
-                            <Grid.ColumnDefinitions>
-                                <ColumnDefinition Width="*" />
-                                <ColumnDefinition Width="Auto" />
-                            </Grid.ColumnDefinitions>
-                            <TextBlock Grid.Column="0" Text="{Binding MembershipText}" FontSize="12" Foreground="{StaticResource SecondaryTextBrush}" TextTrimming="CharacterEllipsis" VerticalAlignment="Center" />
-                            <Border Grid.Column="1" MinWidth="24" Height="19" Margin="8,0,0,0" Padding="5,0" Background="{StaticResource SuccessBrush}" CornerRadius="9" VerticalAlignment="Center">
-                                <TextBlock Text="{Binding ResetCreditsDisplayText}" FontSize="12" Foreground="#15221F" HorizontalAlignment="Center" VerticalAlignment="Center" />
-                            </Border>
-                        </Grid>
+                        <StackPanel Grid.Row="0" HorizontalAlignment="Center">
+                            <RadioButton x:Name="DashboardRailButton" GroupName="MainNavigation" IsChecked="True" Style="{StaticResource IconRailButtonStyle}" ToolTip="{Binding Text.DashboardTab}" AutomationProperties.Name="{Binding Text.DashboardTab}" AutomationProperties.HelpText="{Binding Text.DashboardTab}" Checked="DashboardRailChecked" KeyboardNavigation.TabIndex="0">
+                                <Path Width="17" Height="17" Stretch="Uniform" Fill="{Binding Foreground, RelativeSource={RelativeSource AncestorType=RadioButton}}" Data="{StaticResource DashboardIconGeometry}" />
+                            </RadioButton>
+                            <RadioButton x:Name="SettingsRailButton" GroupName="MainNavigation" Style="{StaticResource IconRailButtonStyle}" ToolTip="{Binding Text.SettingsTab}" AutomationProperties.Name="{Binding Text.SettingsTab}" AutomationProperties.HelpText="{Binding Text.SettingsTab}" Checked="SettingsRailChecked" KeyboardNavigation.TabIndex="1">
+                                <Path Width="17" Height="17" Stretch="Uniform" Fill="{Binding Foreground, RelativeSource={RelativeSource AncestorType=RadioButton}}" Data="{StaticResource SettingsIconGeometry}" />
+                            </RadioButton>
+                        </StackPanel>
+                        <Button x:Name="RailRefreshButton" Grid.Row="1" Width="36" Height="36" Padding="0" HorizontalAlignment="Center" Style="{StaticResource IconButtonStyle}" ToolTip="{Binding Text.RefreshNow}" AutomationProperties.Name="{Binding Text.RefreshNow}" AutomationProperties.HelpText="{Binding Text.RefreshNow}" Click="RefreshClicked" KeyboardNavigation.TabIndex="2">
+                            <Path Width="16" Height="16" Stretch="Uniform" Fill="{Binding Foreground, RelativeSource={RelativeSource AncestorType=Button}}" Data="{StaticResource RefreshIconGeometry}" />
+                        </Button>
                     </Grid>
                 </Border>
-            </TabItem>
 
-            <TabItem Header="{Binding Text.SettingsTab}">
-                <ScrollViewer VerticalScrollBarVisibility="Auto">
-                    <StackPanel Margin="12,10">
-                        <Button HorizontalAlignment="Left" MinWidth="110" Height="26" Padding="8,0" Content="{Binding Text.RefreshNow}" Click="RefreshClicked" />
+                <Grid x:Name="MainContentHost" Grid.Column="1" Background="{StaticResource PanelBrush}">
+                    <Border x:Name="DashboardContent" Padding="10,8" Background="{StaticResource PanelBrush}" Visibility="Visible">
+                            <Grid>
+                                <Grid.RowDefinitions>
+                                    <RowDefinition Height="34" />
+                                    <RowDefinition Height="Auto" />
+                                    <RowDefinition Height="Auto" />
+                                    <RowDefinition Height="Auto" />
+                                </Grid.RowDefinitions>
 
-                        <TextBlock Margin="0,12,0,4" Text="{Binding Text.RefreshInterval}" Foreground="{StaticResource SecondaryTextBrush}" />
-                        <ComboBox x:Name="RefreshIntervalComboBox" Height="26" SelectionChanged="RefreshIntervalSelectionChanged">
-                            <ComboBoxItem Tag="5" Content="{Binding Text.Interval5Seconds}" />
-                            <ComboBoxItem Tag="10" Content="{Binding Text.Interval10Seconds}" />
-                            <ComboBoxItem Tag="30" Content="{Binding Text.Interval30Seconds}" />
-                            <ComboBoxItem Tag="60" Content="{Binding Text.Interval60Seconds}" />
-                            <ComboBoxItem Tag="120" Content="{Binding Text.Interval120Seconds}" />
-                        </ComboBox>
+                                <Grid Grid.Row="0" Margin="0,0,0,5">
+                                    <Grid.ColumnDefinitions>
+                                        <ColumnDefinition Width="Auto" />
+                                        <ColumnDefinition Width="Auto" />
+                                        <ColumnDefinition Width="*" />
+                                    </Grid.ColumnDefinitions>
+                                    <Ellipse Grid.Column="0" Width="8" Height="8" Margin="0,0,7,0" VerticalAlignment="Center" Fill="{StaticResource AccentBrush}" />
+                                    <TextBlock Grid.Column="1" Text="Codex" FontSize="16" FontWeight="SemiBold" VerticalAlignment="Center" />
+                                    <Border Grid.Column="2" Margin="8,0,0,0" Padding="7,3" HorizontalAlignment="Left" VerticalAlignment="Center" Background="{StaticResource AccentSoftBrush}" CornerRadius="6">
+                                        <TextBlock Text="{Binding PlanName}" FontSize="10" Foreground="{StaticResource AccentBrush}" FontWeight="SemiBold" />
+                                    </Border>
+                                </Grid>
 
-                        <TextBlock Margin="0,12,0,4" Text="{Binding Text.MembershipExpiry}" Foreground="{StaticResource SecondaryTextBrush}" />
-                        <TextBox x:Name="MembershipExpiryTextBox" Height="26" ToolTip="{Binding Text.MembershipExpiryPlaceholder}" />
-                        <TextBlock Margin="0,3,0,5" FontSize="11" Foreground="{StaticResource MutedTextBrush}" TextWrapping="Wrap">
-                            <Run Text="{Binding Text.MembershipExpiryPlaceholder}" />
-                            <LineBreak />
-                            <Run Text="{Binding Text.MembershipExpiryHint}" />
-                        </TextBlock>
-                        <Button HorizontalAlignment="Left" MinWidth="80" Height="26" Padding="8,0" Content="{Binding Text.Save}" Click="SaveMembershipExpiryClicked" />
+                                <Border Grid.Row="1" Margin="0,0,0,6" Padding="8,7" Background="{StaticResource CardBrush}" BorderBrush="{StaticResource CardBorderBrush}" BorderThickness="1" CornerRadius="10" Effect="{StaticResource CardShadow}" Visibility="{Binding FiveHourVisibility}">
+                                    <Grid>
+                                        <Grid.RowDefinitions>
+                                            <RowDefinition Height="30" />
+                                            <RowDefinition Height="Auto" />
+                                        </Grid.RowDefinitions>
+                                        <Grid.ColumnDefinitions>
+                                            <ColumnDefinition Width="66" />
+                                            <ColumnDefinition Width="*" />
+                                            <ColumnDefinition Width="54" />
+                                        </Grid.ColumnDefinitions>
+                                        <StackPanel Grid.Row="0" Grid.Column="0" Orientation="Horizontal" VerticalAlignment="Center">
+                                            <Border Width="23" Height="23" Background="{StaticResource AccentSoftBrush}" CornerRadius="7">
+                                                <Path Width="14" Height="14" Stretch="Uniform" Fill="{StaticResource AccentBrush}" Data="{StaticResource BoltIconGeometry}" />
+                                            </Border>
+                                            <TextBlock Text="5h" Margin="6,0,0,0" FontSize="12" Foreground="{StaticResource AccentBrush}" FontWeight="SemiBold" VerticalAlignment="Center" />
+                                        </StackPanel>
+                                        <ProgressBar Grid.Row="0" Grid.Column="1" Height="8" Margin="0,0,8,0" VerticalAlignment="Center" Minimum="0" Maximum="100" Value="{Binding FiveHourPercent, Mode=OneWay}" Background="#333333" Foreground="{StaticResource AccentBrush}" BorderThickness="0" />
+                                        <TextBlock Grid.Row="0" Grid.Column="2" Text="{Binding FiveHourPercentText}" FontSize="21" FontWeight="SemiBold" HorizontalAlignment="Right" VerticalAlignment="Center" />
+                                        <Border Grid.Row="1" Grid.Column="0" Grid.ColumnSpan="3" Margin="0,3,0,0" Padding="7,5" Background="{StaticResource AccentSoftBrush}" BorderBrush="{StaticResource CardBorderBrush}" BorderThickness="1" CornerRadius="6" ToolTip="{Binding FiveHourResetText}" AutomationProperties.Name="{Binding FiveHourResetText}">
+                                            <Grid>
+                                                <Grid.ColumnDefinitions>
+                                                    <ColumnDefinition Width="Auto" />
+                                                    <ColumnDefinition Width="*" />
+                                                </Grid.ColumnDefinitions>
+                                                <Path Width="13" Height="13" Margin="0,0,6,0" Stretch="Uniform" Fill="{StaticResource AccentBrush}" Data="{StaticResource CalendarIconGeometry}" />
+                                                <TextBlock Grid.Column="1" Text="{Binding FiveHourResetText}" FontSize="12.5" FontWeight="SemiBold" Foreground="{StaticResource PrimaryTextBrush}" TextWrapping="Wrap" />
+                                            </Grid>
+                                        </Border>
+                                    </Grid>
+                                </Border>
 
-                        <TextBlock Margin="0,12,0,4" Text="{Binding Text.Language}" Foreground="{StaticResource SecondaryTextBrush}" />
-                        <ComboBox x:Name="LanguageComboBox" Height="26" SelectionChanged="LanguageSelectionChanged">
-                            <ComboBoxItem Tag="SimplifiedChinese" Content="{Binding Text.SimplifiedChinese}" />
-                            <ComboBoxItem Tag="English" Content="{Binding Text.English}" />
-                        </ComboBox>
+                                <Border Grid.Row="2" Margin="0,0,0,6" Padding="8,7" Background="{StaticResource CardBrush}" BorderBrush="{StaticResource CardBorderBrush}" BorderThickness="1" CornerRadius="10" Effect="{StaticResource CardShadow}" Visibility="{Binding SevenDayVisibility}">
+                                    <Grid>
+                                        <Grid.RowDefinitions>
+                                            <RowDefinition Height="30" />
+                                            <RowDefinition Height="Auto" />
+                                        </Grid.RowDefinitions>
+                                        <Grid.ColumnDefinitions>
+                                            <ColumnDefinition Width="66" />
+                                            <ColumnDefinition Width="*" />
+                                            <ColumnDefinition Width="54" />
+                                        </Grid.ColumnDefinitions>
+                                        <StackPanel Grid.Row="0" Grid.Column="0" Orientation="Horizontal" VerticalAlignment="Center">
+                                            <Border Width="23" Height="23" Background="{StaticResource WeeklySoftBrush}" CornerRadius="7">
+                                                <Path Width="14" Height="14" Stretch="Uniform" Fill="{StaticResource WeeklyBrush}" Data="{StaticResource CalendarIconGeometry}" />
+                                            </Border>
+                                            <TextBlock Text="7d" Margin="6,0,0,0" FontSize="12" Foreground="{StaticResource WeeklyBrush}" FontWeight="SemiBold" VerticalAlignment="Center" />
+                                        </StackPanel>
+                                        <ProgressBar Grid.Row="0" Grid.Column="1" Height="8" Margin="0,0,8,0" VerticalAlignment="Center" Minimum="0" Maximum="100" Value="{Binding SevenDayPercent, Mode=OneWay}" Background="#333333" Foreground="{StaticResource WeeklyBrush}" BorderThickness="0" />
+                                        <TextBlock Grid.Row="0" Grid.Column="2" Text="{Binding SevenDayPercentText}" FontSize="21" FontWeight="SemiBold" HorizontalAlignment="Right" VerticalAlignment="Center" />
+                                        <Border Grid.Row="1" Grid.Column="0" Grid.ColumnSpan="3" Margin="0,3,0,0" Padding="7,5" Background="{StaticResource WeeklySoftBrush}" BorderBrush="{StaticResource CardBorderBrush}" BorderThickness="1" CornerRadius="6" ToolTip="{Binding SevenDayResetText}" AutomationProperties.Name="{Binding SevenDayResetText}">
+                                            <Grid>
+                                                <Grid.ColumnDefinitions>
+                                                    <ColumnDefinition Width="Auto" />
+                                                    <ColumnDefinition Width="*" />
+                                                </Grid.ColumnDefinitions>
+                                                <Path Width="13" Height="13" Margin="0,0,6,0" Stretch="Uniform" Fill="{StaticResource WeeklyBrush}" Data="{StaticResource CalendarIconGeometry}" />
+                                                <TextBlock Grid.Column="1" Text="{Binding SevenDayResetText}" FontSize="12.5" FontWeight="SemiBold" Foreground="{StaticResource PrimaryTextBrush}" TextWrapping="Wrap" />
+                                            </Grid>
+                                        </Border>
+                                    </Grid>
+                                </Border>
 
-                        <CheckBox x:Name="LaunchAtLoginCheckBox" Margin="0,12,0,0" Content="{Binding Text.LaunchAtLogin}" Checked="LaunchAtLoginChanged" Unchecked="LaunchAtLoginChanged" />
-                        <TextBlock x:Name="SettingsStatusTextBlock" Margin="0,7,0,0" FontSize="11" Foreground="{StaticResource SecondaryTextBrush}" TextWrapping="Wrap" />
-                    </StackPanel>
-                </ScrollViewer>
-            </TabItem>
-        </TabControl>
-    </Grid>
+                                <Border Grid.Row="3" Margin="0,1,0,0" Padding="8,6" Background="{StaticResource SurfaceBrush}" BorderBrush="{StaticResource CardBorderBrush}" BorderThickness="1" CornerRadius="8">
+                                    <Grid>
+                                        <Grid.ColumnDefinitions>
+                                            <ColumnDefinition Width="*" />
+                                            <ColumnDefinition Width="Auto" />
+                                        </Grid.ColumnDefinitions>
+                                        <StackPanel Grid.Column="0" Orientation="Horizontal" VerticalAlignment="Center">
+                                            <Path Width="14" Height="14" Margin="0,0,6,0" Stretch="Uniform" Fill="{StaticResource SecondaryTextBrush}" Data="{StaticResource CalendarIconGeometry}" />
+                                            <TextBlock Text="{Binding MembershipText}" FontSize="12.5" Foreground="{StaticResource SecondaryTextBrush}" TextTrimming="CharacterEllipsis" VerticalAlignment="Center" ToolTip="{Binding MembershipText}" />
+                                        </StackPanel>
+                                        <Border Grid.Column="1" MinWidth="24" Height="19" Margin="8,0,0,0" Padding="5,0" Background="{StaticResource SuccessBrush}" CornerRadius="9" VerticalAlignment="Center" ToolTip="{Binding ResetCreditsDisplayText}">
+                                            <StackPanel Orientation="Horizontal">
+                                                <Path Width="11" Height="11" Margin="0,0,4,0" Stretch="Uniform" Fill="#15221F" Data="{StaticResource RefreshIconGeometry}" />
+                                                <TextBlock Text="{Binding ResetCreditsText}" FontSize="12" Foreground="#15221F" HorizontalAlignment="Center" VerticalAlignment="Center" />
+                                            </StackPanel>
+                                        </Border>
+                                    </Grid>
+                                </Border>
+                            </Grid>
+                    </Border>
+
+                    <Border x:Name="SettingsContent" Padding="10,7" Background="{StaticResource PanelBrush}" Visibility="Collapsed">
+                            <Grid>
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="112" />
+                                    <ColumnDefinition Width="*" MinWidth="180" MaxWidth="240" />
+                                </Grid.ColumnDefinitions>
+                                <Grid.RowDefinitions>
+                                    <RowDefinition Height="30" />
+                                    <RowDefinition Height="32" />
+                                    <RowDefinition Height="34" />
+                                    <RowDefinition Height="24" />
+                                    <RowDefinition Height="32" />
+                                    <RowDefinition Height="24" />
+                                    <RowDefinition Height="*" />
+                                </Grid.RowDefinitions>
+
+                                <TextBlock Grid.Row="0" Grid.Column="0" Text="{Binding Text.RefreshNow}" Foreground="{StaticResource SecondaryTextBrush}" VerticalAlignment="Center" />
+                                <Button Grid.Row="0" Grid.Column="1" VerticalAlignment="Center" Style="{StaticResource IconButtonStyle}" ToolTip="{Binding Text.RefreshNow}" AutomationProperties.Name="{Binding Text.RefreshNow}" Click="RefreshClicked">
+                                    <Path Width="15" Height="15" Stretch="Uniform" Fill="{Binding Foreground, RelativeSource={RelativeSource AncestorType=Button}}" Data="{StaticResource RefreshIconGeometry}" />
+                                </Button>
+
+                                <TextBlock Grid.Row="1" Grid.Column="0" Text="{Binding Text.RefreshInterval}" Foreground="{StaticResource SecondaryTextBrush}" VerticalAlignment="Center" />
+                                <ComboBox x:Name="RefreshIntervalComboBox" Grid.Row="1" Grid.Column="1" Height="24" SelectionChanged="RefreshIntervalSelectionChanged">
+                                    <ComboBoxItem Tag="5" Content="{Binding Text.Interval5Seconds}" />
+                                    <ComboBoxItem Tag="10" Content="{Binding Text.Interval10Seconds}" />
+                                    <ComboBoxItem Tag="30" Content="{Binding Text.Interval30Seconds}" />
+                                    <ComboBoxItem Tag="60" Content="{Binding Text.Interval60Seconds}" />
+                                    <ComboBoxItem Tag="120" Content="{Binding Text.Interval120Seconds}" />
+                                </ComboBox>
+
+                                <TextBlock Grid.Row="2" Grid.Column="0" Text="{Binding Text.MembershipExpiry}" Foreground="{StaticResource SecondaryTextBrush}" VerticalAlignment="Center" />
+                                <Grid Grid.Row="2" Grid.Column="1">
+                                    <Grid.ColumnDefinitions>
+                                        <ColumnDefinition Width="*" />
+                                        <ColumnDefinition Width="58" />
+                                    </Grid.ColumnDefinitions>
+                                    <TextBox x:Name="MembershipExpiryTextBox" Grid.Column="0" Height="24" ToolTip="{Binding Text.MembershipExpiryPlaceholder}" />
+                                    <Button Grid.Column="1" Width="52" Height="24" Margin="6,0,0,0" Padding="4,0" Content="{Binding Text.Save}" Style="{StaticResource PrimaryButtonStyle}" Click="SaveMembershipExpiryClicked" />
+                                </Grid>
+
+                                <TextBlock Grid.Row="3" Grid.Column="1" FontSize="10" Foreground="{StaticResource MutedTextBrush}" Text="{Binding Text.MembershipExpiryHint}" ToolTip="{Binding Text.MembershipExpiryPlaceholder}" TextWrapping="NoWrap" TextTrimming="CharacterEllipsis" VerticalAlignment="Center" />
+
+                                <TextBlock Grid.Row="4" Grid.Column="0" Text="{Binding Text.Language}" Foreground="{StaticResource SecondaryTextBrush}" VerticalAlignment="Center" />
+                                <ComboBox x:Name="LanguageComboBox" Grid.Row="4" Grid.Column="1" Height="24" SelectionChanged="LanguageSelectionChanged">
+                                    <ComboBoxItem Tag="SimplifiedChinese" Content="{Binding Text.SimplifiedChinese}" />
+                                    <ComboBoxItem Tag="English" Content="{Binding Text.English}" />
+                                </ComboBox>
+
+                                <CheckBox x:Name="LaunchAtLoginCheckBox" Grid.Row="5" Grid.Column="1" Content="{Binding Text.LaunchAtLogin}" Checked="LaunchAtLoginChanged" Unchecked="LaunchAtLoginChanged" VerticalAlignment="Center" />
+                                <TextBlock x:Name="SettingsStatusTextBlock" Grid.Row="6" Grid.Column="1" FontSize="10" Foreground="{StaticResource SecondaryTextBrush}" TextWrapping="Wrap" VerticalAlignment="Top" />
+                            </Grid>
+                    </Border>
+                </Grid>
+            </Grid>
+        </Grid>
+    </Border>
 </Window>
