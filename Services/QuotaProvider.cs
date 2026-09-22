@@ -167,7 +167,9 @@ public sealed class CodexQuotaProvider : IQuotaProvider
         else if (response.TryGetProperty("rateLimits", out var single)) AddWindowsFromSnapshot(single, windows);
     }
 
-    /// <summary>兼容不同 app-server 版本可能使用的会员到期字段。</summary>
+    /// <summary>
+    /// 探测 app-server 可能返回的会员到期字段；只有名称明确指向会员或订阅时才使用，绝不把额度窗口或重置券到期误标为会员时间。
+    /// </summary>
     private static DateTimeOffset? FindMembershipExpiry(JsonElement account)
     {
         if (account.ValueKind != JsonValueKind.Object)
@@ -175,16 +177,16 @@ public sealed class CodexQuotaProvider : IQuotaProvider
             return null;
         }
 
-        foreach (var name in new[] { "membershipExpiresAt", "subscriptionExpiresAt", "planExpiresAt", "expiresAt" })
+        foreach (var name in new[] { "membershipExpiresAt", "subscriptionExpiresAt", "planExpiresAt" })
         {
             if (!account.TryGetProperty(name, out var value))
             {
                 continue;
             }
 
-            if (value.ValueKind == JsonValueKind.Number && value.TryGetInt64(out var unixSeconds))
+            if (value.ValueKind == JsonValueKind.Number && value.TryGetInt64(out var unixTimestamp))
             {
-                return DateTimeOffset.FromUnixTimeSeconds(unixSeconds).ToLocalTime();
+                return ParseUnixTimestamp(unixTimestamp);
             }
 
             if (value.ValueKind == JsonValueKind.String && DateTimeOffset.TryParse(value.GetString(), out var parsed))
@@ -194,6 +196,21 @@ public sealed class CodexQuotaProvider : IQuotaProvider
         }
 
         return null;
+    }
+
+    /// <summary>兼容服务端以秒或毫秒表示的 Unix 时间，统一转换为当前用户本地时间。</summary>
+    private static DateTimeOffset? ParseUnixTimestamp(long unixTimestamp)
+    {
+        try
+        {
+            return Math.Abs(unixTimestamp) >= 100_000_000_000
+                ? DateTimeOffset.FromUnixTimeMilliseconds(unixTimestamp).ToLocalTime()
+                : DateTimeOffset.FromUnixTimeSeconds(unixTimestamp).ToLocalTime();
+        }
+        catch (ArgumentOutOfRangeException)
+        {
+            return null;
+        }
     }
 
     /// <summary>根据 primary/secondary 的分钟数确定标签；未知窗口不伪造为支持的额度。</summary>

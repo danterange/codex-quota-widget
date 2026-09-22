@@ -1,0 +1,105 @@
+namespace CodexQuotaWidget.Models;
+
+/// <summary>
+/// 汇集主界面与托盘会使用的本地化文本，避免界面语言切换时遗漏独立菜单项。
+/// </summary>
+public sealed record LocalizedText(
+    string WindowTitle,
+    string DashboardTab,
+    string SettingsTab,
+    string RefreshNow,
+    string RefreshInterval,
+    string Interval5Seconds,
+    string Interval10Seconds,
+    string Interval30Seconds,
+    string Interval60Seconds,
+    string Interval120Seconds,
+    string MembershipExpiry,
+    string MembershipExpiryHint,
+    string MembershipExpiryPlaceholder,
+    string Save,
+    string LaunchAtLogin,
+    string Language,
+    string SimplifiedChinese,
+    string English,
+    string OpenMainWindow,
+    string ExitWidget,
+    string SettingsSaved,
+    string AutoStartUnavailable,
+    string RefreshingQuota,
+    string Seconds,
+    string AutoRefreshSuffix,
+    string LoadingMembership,
+    string MembershipUnknown,
+    string MembershipExpired,
+    string ResetCredits);
+
+/// <summary>按用户保存的语言返回一组完整界面文本，避免混用中英文控件标题。</summary>
+public static class LocalizedTextProvider
+{
+    /// <summary>为指定语言生成主界面、设置页和托盘菜单共同使用的文本。</summary>
+    public static LocalizedText Get(AppLanguage language)
+    {
+        return language == AppLanguage.English
+            ? new LocalizedText(
+                "Codex Quota Widget",
+                "Dashboard",
+                "Settings",
+                "Refresh now",
+                "Refresh interval",
+                "5 seconds",
+                "10 seconds",
+                "30 seconds",
+                "60 seconds",
+                "120 seconds",
+                "Membership expiry",
+                "Automatic data is preferred. Enter a local fallback only when it is unavailable.",
+                "yyyy/MM/dd HH:mm:ss (leave blank to clear)",
+                "Save",
+                "Launch at sign-in",
+                "Language",
+                "简体中文",
+                "English",
+                "Open main window",
+                "Exit widget",
+                "Settings saved",
+                "Launch at sign-in is available only in an installed or portable release.",
+                "Refreshing quota…",
+                "seconds",
+                "automatic refresh; percentages show remaining quota.",
+                "Loading membership expiry…",
+                "Membership expiry unavailable",
+                "Expired",
+                "Reset credits")
+            : new LocalizedText(
+                "Codex 额度",
+                "额度",
+                "设置",
+                "刷新额度",
+                "刷新间隔",
+                "5 秒",
+                "10 秒",
+                "30 秒",
+                "60 秒",
+                "120 秒",
+                "会员到期时间",
+                "优先使用 Codex 自动数据；自动数据缺失时才使用本地手动日期。",
+                "yyyy/MM/dd HH:mm:ss（留空可清除）",
+                "保存",
+                "开机时启动",
+                "界面语言",
+                "简体中文",
+                "English",
+                "主界面",
+                "退出小组件",
+                "设置已保存",
+                "开机启动仅在安装版或便携版中可用。",
+                "正在读取额度…",
+                "秒",
+                "自动刷新；百分比表示剩余额度。",
+                "正在读取会员到期时间…",
+                "会员到期时间未知",
+                "已到期",
+                "重置次数");
+    }
+}

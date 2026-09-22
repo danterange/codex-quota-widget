@@ -39,6 +39,10 @@ Name: "desktopicon"; Description: "Create a desktop shortcut"; GroupDescription:
 [Files]
 Source: "{#PublishDir}\*"; DestDir: "{app}"; Flags: ignoreversion recursesubdirs createallsubdirs
 
+[Registry]
+; The application can later toggle this same HKCU value from Settings. Remove only its own value on uninstall.
+Root: HKCU; Subkey: "Software\Microsoft\Windows\CurrentVersion\Run"; ValueType: string; ValueName: "CodexQuotaWidget"; ValueData: """{app}\CodexQuotaWidget.exe"""; Flags: uninsdeletevalue
+
 [Icons]
 Name: "{autoprograms}\Codex Quota Widget"; Filename: "{app}\CodexQuotaWidget.exe"; WorkingDir: "{app}"
 Name: "{autodesktop}\Codex Quota Widget"; Filename: "{app}\CodexQuotaWidget.exe"; WorkingDir: "{app}"; Tasks: desktopicon

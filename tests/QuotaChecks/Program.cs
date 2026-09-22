@@ -35,6 +35,7 @@ internal static class Program
             {
                 CheckLocator();
                 CheckSettings();
+                CheckMembershipPresentation();
                 CheckProtocolAsync().GetAwaiter().GetResult();
                 CheckDispatcher(new CountingProvider(), live: false);
             }
@@ -48,15 +49,44 @@ internal static class Program
         }
     }
 
-    /// <summary>验证默认十秒、秒级范围校验和重启后的偏好持久化。</summary>
+    /// <summary>验证默认偏好、语言/手动到期时间持久化、范围校验和安全的开机启动命令。</summary>
     private static void CheckSettings()
     {
         var path = Path.Combine(Path.GetTempPath(), "quota-settings-" + Guid.NewGuid().ToString("N"), "settings.json");
-        Check(WidgetSettingsStore.Load(path).RefreshIntervalSeconds == 10, "默认刷新间隔为十秒");
-        WidgetSettingsStore.Save(new WidgetSettings(25), path);
-        Check(WidgetSettingsStore.Load(path).RefreshIntervalSeconds == 25, "刷新间隔可按秒保存");
+        var defaults = WidgetSettingsStore.Load(path);
+        Check(defaults.RefreshIntervalSeconds == 10 && defaults.Language == AppLanguage.SimplifiedChinese && defaults.LaunchAtLogin,
+            "默认刷新间隔、中文和开机启动偏好正确");
+        Directory.CreateDirectory(Path.GetDirectoryName(path)!);
+        File.WriteAllText(path, "{\"RefreshIntervalSeconds\":30}");
+        var upgraded = WidgetSettingsStore.Load(path);
+        Check(upgraded.RefreshIntervalSeconds == 30 && upgraded.Language == AppLanguage.SimplifiedChinese && upgraded.LaunchAtLogin,
+            "旧版仅有刷新间隔的配置会升级为中文和开机启动默认值");
+        var manualExpiry = new DateTimeOffset(2026, 9, 22, 12, 0, 0, TimeSpan.FromHours(8));
+        WidgetSettingsStore.Save(new WidgetSettings(25, AppLanguage.English, false, manualExpiry), path);
+        var saved = WidgetSettingsStore.Load(path);
+        Check(saved.RefreshIntervalSeconds == 25 && saved.Language == AppLanguage.English && !saved.LaunchAtLogin
+            && saved.ManualMembershipExpiresAt == manualExpiry, "设置页偏好可完整保存");
         Check(WidgetSettingsStore.Normalize(new WidgetSettings(0)).RefreshIntervalSeconds == 1, "刷新间隔最小为一秒");
         Check(WidgetSettingsStore.Normalize(new WidgetSettings(5000)).RefreshIntervalSeconds == 3600, "刷新间隔最大为一小时");
+        Check(AutoStartService.CreateCommand(@"C:\Portable Apps\CodexQuotaWidget.exe") == "\"C:\\Portable Apps\\CodexQuotaWidget.exe\"",
+            "便携版开机启动命令带完整引号");
+        Check(AutoStartService.CreateCommand(@"C:\source\bin\Release\CodexQuotaWidget.exe") is null,
+            "开发输出目录不会注册开机启动");
+    }
+
+    /// <summary>验证中英文会员时间格式与用户指定的中文精确样式，避免把分钟倒计时格式回归为简写。</summary>
+    private static void CheckMembershipPresentation()
+    {
+        var now = new DateTimeOffset(2026, 9, 22, 11, 44, 0, TimeSpan.FromHours(8));
+        var expiry = new DateTimeOffset(2026, 9, 22, 12, 0, 0, TimeSpan.FromHours(8));
+        Check(QuotaViewModel.FormatMembershipExpiry(expiry, now, AppLanguage.SimplifiedChinese)
+            == "到期：2026/09/22 12:00:00(剩余0天0小时16分)", "中文会员到期格式精确匹配");
+        Check(QuotaViewModel.FormatMembershipExpiry(expiry, now, AppLanguage.English)
+            == "Expires: 2026/09/22 12:00:00 (0d 0h 16m left)", "英文会员到期格式正确");
+        Check(QuotaViewModel.SelectMembershipExpiry(expiry, now) == expiry
+            && QuotaViewModel.SelectMembershipExpiry(null, expiry) == expiry,
+            "自动会员日期优先且缺失时回退到手动日期");
+        Check(LocalizedTextProvider.Get(AppLanguage.English).SettingsTab == "Settings", "英文设置页文本可用");
     }
 
     /// <summary>构造 npm 存在但桌面原生程序位于散列目录的实际故障布局。</summary>
@@ -76,13 +106,14 @@ internal static class Program
     /// <summary>从生产提供器发起真实子进程 RPC，验证握手、通知、错误、超时和清理。</summary>
     private static async Task CheckProtocolAsync()
     {
-        var provider = new CodexQuotaProvider(Environment.ProcessPath);
+        var provider = new CodexQuotaProvider(GetTestExecutablePath());
         try
         {
             Environment.SetEnvironmentVariable("QUOTA_CHECK_MODE", "success");
             var snapshot = await provider.GetSnapshotAsync(CancellationToken.None);
-            Check(snapshot.FiveHour is null && snapshot.SevenDay?.Percent == 45 && snapshot.ResetCredits == 2,
-                "严格握手、跳过通知、仅周额度和重置次数");
+            Check(snapshot.FiveHour is null && snapshot.SevenDay?.Percent == 45 && snapshot.ResetCredits == 2
+                && snapshot.MembershipExpiresAt == DateTimeOffset.FromUnixTimeSeconds(1893456000).ToLocalTime(),
+                "严格握手、自动会员到期、仅周额度和重置次数");
             foreach (var item in new[] { ("broken", "Codex 安装不完整"), ("signed-out", "请先登录 Codex"), ("api-key", "需要 ChatGPT 登录"), ("unauthorized", "登录已失效"), ("timeout", "读取超时") })
             {
                 Environment.SetEnvironmentVariable("QUOTA_CHECK_MODE", item.Item1);
@@ -109,10 +140,25 @@ internal static class Program
         finally { Environment.SetEnvironmentVariable("QUOTA_CHECK_MODE", null); }
     }
 
-    /// <summary>用真实 WPF Dispatcher 验证两次十秒 Tick、错误恢复及关闭后的停止。</summary>
+    /// <summary>返回测试项目的 Windows apphost，避免以 <c>dotnet QuotaChecks.dll</c> 启动时把 dotnet CLI 误作协议服务端。</summary>
+    private static string GetTestExecutablePath()
+    {
+        var appHost = Path.Combine(AppContext.BaseDirectory, "QuotaChecks.exe");
+        if (File.Exists(appHost))
+        {
+            return appHost;
+        }
+
+        return Environment.ProcessPath ?? throw new InvalidOperationException("无法定位协议测试子进程。");
+    }
+
+    /// <summary>用真实 WPF Dispatcher 验证两次短间隔 Tick、错误恢复及关闭后的停止。</summary>
     private static void CheckDispatcher(IQuotaProvider provider, bool live)
     {
-        var viewModel = new QuotaViewModel(provider);
+        // 验收默认十秒设置在 CheckSettings 中覆盖；离线回归使用短 Tick，真实 app-server 则预留足够时间避免网络读取尚未完成时被下一次 Tick 跳过。
+        var refreshIntervalSeconds = live ? 5 : 2;
+        var verificationSeconds = live ? 16 : 6;
+        var viewModel = new QuotaViewModel(provider, refreshIntervalSeconds: refreshIntervalSeconds);
         var frame = new DispatcherFrame();
         var updates = 0;
         Exception? failure = null;
@@ -126,7 +172,7 @@ internal static class Program
                 Console.WriteLine($"REFRESH success={updates} elapsed={(DateTimeOffset.Now - started).TotalSeconds:0.0}s");
             }
         };
-        var stop = new DispatcherTimer { Interval = TimeSpan.FromSeconds(25) };
+        var stop = new DispatcherTimer { Interval = TimeSpan.FromSeconds(verificationSeconds) };
         stop.Tick += (_, _) =>
         {
             stop.Stop();
@@ -135,7 +181,7 @@ internal static class Program
                 Check(viewModel.ErrorText.Length == 0, "最后一次刷新无错误");
                 Check(viewModel.SevenDayVisibility == Visibility.Visible, "真实绑定显示周额度");
                 Check(updates >= 2, "观察到两次自动成功刷新");
-                if (!live) Check(((CountingProvider)provider).Calls == 3, "启动和两次十秒刷新恰好三次调用");
+                if (!live) Check(((CountingProvider)provider).Calls == 3, "启动和两次自动刷新恰好三次调用");
                 viewModel.Dispose();
                 if (!live)
                 {
@@ -171,7 +217,7 @@ internal static class Program
             else if (!initialized) await Console.Out.WriteLineAsync("""{"id":2,"error":{"message":"Not initialized"}}""");
             else if (method == "account/read")
             {
-                var account = mode == "signed-out" ? "null" : mode == "api-key" ? """{"type":"apiKey"}""" : """{"type":"chatgpt","planType":"pro"}""";
+                var account = mode == "signed-out" ? "null" : mode == "api-key" ? """{"type":"apiKey"}""" : """{"type":"chatgpt","planType":"pro","membershipExpiresAt":1893456000}""";
                 await Console.Out.WriteLineAsync("""{"method":"notification","params":{}}""");
                 await Console.Out.WriteLineAsync("{\"id\":2,\"result\":{\"account\":" + account + "}}");
             }

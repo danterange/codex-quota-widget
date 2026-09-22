@@ -9,7 +9,7 @@ internal static class WidgetSettingsStore
 {
     private const int DefaultRefreshIntervalSeconds = 10;
 
-    /// <summary>加载配置；文件缺失、损坏或间隔越界时回退到十秒。</summary>
+    /// <summary>加载配置；文件缺失、损坏或间隔越界时回退到安全的默认偏好。</summary>
     internal static WidgetSettings Load(string? path = null)
     {
         var settingsPath = path ?? GetDefaultPath();
@@ -49,10 +49,17 @@ internal static class WidgetSettingsStore
         }
     }
 
-    /// <summary>限制刷新间隔范围，防止误填零秒造成 UI 线程高频请求。</summary>
+    /// <summary>限制刷新间隔与语言枚举，防止损坏的配置造成高频请求或无法切换的界面。</summary>
     internal static WidgetSettings Normalize(WidgetSettings settings)
     {
-        return settings with { RefreshIntervalSeconds = Math.Clamp(settings.RefreshIntervalSeconds, 1, 3600) };
+        var language = Enum.IsDefined(settings.Language)
+            ? settings.Language
+            : AppLanguage.SimplifiedChinese;
+        return settings with
+        {
+            RefreshIntervalSeconds = Math.Clamp(settings.RefreshIntervalSeconds, 1, 3600),
+            Language               = language
+        };
     }
 
     /// <summary>返回当前用户的配置文件路径，与 Codex 状态目录保持隔离。</summary>
