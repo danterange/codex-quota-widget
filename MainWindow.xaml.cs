@@ -18,13 +18,16 @@ public partial class MainWindow : Window
     private WidgetSettings settings;
     private bool applyingControls;
     private bool exitRequested;
+    private readonly bool exitOnClose;
 
-    /// <summary>初始化数据绑定、设置控件和开机启动状态，避免首次显示时触发无意义的保存事件。</summary>
+    /// <summary>初始化数据绑定、设置控件和开机启动状态，避免首次显示时触发无意义的保存事件，并识别发布验收的正常退出参数。</summary>
     internal MainWindow(WidgetSettings initialSettings, Func<WidgetSettings, AutoStartResult> saveSettingsCallback, AutoStartResult autoStartResult)
     {
         InitializeComponent();
         settings = initialSettings;
         saveSettings = saveSettingsCallback;
+        exitOnClose = Environment.GetCommandLineArgs().Any(argument =>
+            string.Equals(argument, "--exit-on-close", StringComparison.OrdinalIgnoreCase));
         viewModel = new QuotaViewModel(settings: settings);
         DataContext = viewModel;
         ApplySettingsToControls(autoStartResult);
@@ -169,19 +172,23 @@ public partial class MainWindow : Window
         Top = workArea.Bottom - Height - 12;
     }
 
-    /// <summary>关闭主界面时隐藏到托盘，保留自动刷新和用户明确要求的托盘退出入口。</summary>
+    /// <summary>关闭主界面时隐藏到托盘；发布验收的 <c>--exit-on-close</c> 参数允许自动化测试验证正常退出。</summary>
     private void MainWindowClosing(object? sender, CancelEventArgs e)
     {
-        if (!exitRequested)
+        if (!exitRequested && !exitOnClose)
         {
             e.Cancel = true;
             Hide();
         }
     }
 
-    /// <summary>仅在明确退出后释放刷新计时器和取消令牌，避免隐藏窗口时停止后台更新。</summary>
+    /// <summary>仅在明确退出后释放刷新计时器和取消令牌；发布验收参数还会结束显式关闭模式下的应用进程。</summary>
     private void MainWindowClosed(object? sender, EventArgs e)
     {
         viewModel.Dispose();
+        if (exitOnClose)
+        {
+            System.Windows.Application.Current.Shutdown();
+        }
     }
 }

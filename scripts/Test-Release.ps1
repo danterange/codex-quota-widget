@@ -40,11 +40,15 @@ function Test-Application {
     # Keep the WPF window visible; hiding the process also hides its top-level window
     # and makes UI Automation report a false negative even though the app is running.
     # Match the working directory used by the installed shortcut.
-    $process = Start-Process -FilePath $Executable -WorkingDirectory (Split-Path -Parent $Executable) -ArgumentList '--demo' -PassThru
+    # 生产环境的关闭按钮会隐藏到托盘；验收参数让 WM_CLOSE 走应用的正常退出和资源释放路径。
+    $process = Start-Process -FilePath $Executable -WorkingDirectory (Split-Path -Parent $Executable) -ArgumentList @('--demo', '--exit-on-close') -PassThru
     $window = $null
     try {
         $deadline = [DateTime]::UtcNow.AddSeconds(20)
-        $condition = [System.Windows.Automation.PropertyCondition]::new([System.Windows.Automation.AutomationElement]::ProcessIdProperty, $process.Id)
+        # 同一 PID 可能有输入法等辅助 Pane；只接受真正承载 WPF 内容的 Window，避免误向辅助窗口发送关闭消息。
+        $condition = [System.Windows.Automation.AndCondition]::new(
+            [System.Windows.Automation.PropertyCondition]::new([System.Windows.Automation.AutomationElement]::ProcessIdProperty, $process.Id),
+            [System.Windows.Automation.PropertyCondition]::new([System.Windows.Automation.AutomationElement]::ControlTypeProperty, [System.Windows.Automation.ControlType]::Window))
         do {
             if ($process.HasExited) { throw "Application exited early: $($process.ExitCode)" }
             $process.Refresh()
