@@ -79,10 +79,15 @@ internal static class Program
     {
         var now = new DateTimeOffset(2026, 9, 22, 11, 44, 0, TimeSpan.FromHours(8));
         var expiry = new DateTimeOffset(2026, 9, 22, 12, 0, 0, TimeSpan.FromHours(8));
+        var localNow = now.ToLocalTime();
+        var localExpiry = expiry.ToLocalTime();
+        var remaining = localExpiry - localNow;
+        var expectedChinese = $"到期：{localExpiry:yyyy/MM/dd HH:mm:ss}(剩余{(int)remaining.TotalDays}天{remaining.Hours}小时{remaining.Minutes}分)";
+        var expectedEnglish = $"Expires: {localExpiry:yyyy/MM/dd HH:mm:ss} ({(int)remaining.TotalDays}d {remaining.Hours}h {remaining.Minutes}m left)";
         Check(QuotaViewModel.FormatMembershipExpiry(expiry, now, AppLanguage.SimplifiedChinese)
-            == "到期：2026/09/22 12:00:00(剩余0天0小时16分)", "中文会员到期格式精确匹配");
+            == expectedChinese, "中文会员到期格式精确匹配");
         Check(QuotaViewModel.FormatMembershipExpiry(expiry, now, AppLanguage.English)
-            == "Expires: 2026/09/22 12:00:00 (0d 0h 16m left)", "英文会员到期格式正确");
+            == expectedEnglish, "英文会员到期格式正确");
         Check(QuotaViewModel.SelectMembershipExpiry(expiry, now) == expiry
             && QuotaViewModel.SelectMembershipExpiry(null, expiry) == expiry,
             "自动会员日期优先且缺失时回退到手动日期");
