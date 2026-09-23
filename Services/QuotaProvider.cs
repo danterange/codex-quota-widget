@@ -155,7 +155,8 @@ public sealed class CodexQuotaProvider : IQuotaProvider
         var windows = new List<QuotaWindow>();
         AddWindows(limitsResponse, windows);
         var resetCredits = limitsResponse.TryGetProperty("rateLimitResetCredits", out var credits) && credits.ValueKind == JsonValueKind.Object && credits.TryGetProperty("availableCount", out var count) ? count.GetInt32() : (int?)null;
-        var membershipExpiresAt = FindMembershipExpiry(account);
+        // app-server 的账号响应在部分版本不会带订阅日期；此时从本机登录令牌补齐同一账号的订阅有效期。
+        var membershipExpiresAt = FindMembershipExpiry(account) ?? CodexAuthMembershipReader.Read();
         return new QuotaSnapshot(accountLabel, plan, windows.Find(window => window.Label == "5h"), windows.Find(window => window.Label == "7d"), membershipExpiresAt, resetCredits) { AccountKey = accountId ?? accountLabel };
     }
 

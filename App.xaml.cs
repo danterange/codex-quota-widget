@@ -16,14 +16,13 @@ public partial class App : System.Windows.Application
     private WidgetSettings settings = new();
 
     /// <summary>
-    /// 显式创建并显示主窗口，并在首次启动时把默认开机启动偏好同步到当前用户的 Run 项。
+    /// 显式创建并显示主窗口；应用不再修改 Windows 的开机启动项。
     /// </summary>
     protected override void OnStartup(StartupEventArgs e)
     {
         base.OnStartup(e);
         settings = WidgetSettingsStore.Load();
-        var autoStartResult = AutoStartService.Apply(settings.LaunchAtLogin);
-        MainWindow = new MainWindow(settings, SaveSettings, autoStartResult);
+        MainWindow = new MainWindow(settings, SaveSettings);
         CreateTrayIcon();
         MainWindow.Show();
     }
@@ -44,14 +43,12 @@ public partial class App : System.Windows.Application
         trayIcon.DoubleClick += TrayIconDoubleClicked;
     }
 
-    /// <summary>保存主界面提交的当前用户偏好，并立即同步开机启动和托盘语言。</summary>
-    private AutoStartResult SaveSettings(WidgetSettings updatedSettings)
+    /// <summary>保存主界面提交的当前用户偏好，并立即同步托盘语言。</summary>
+    private void SaveSettings(WidgetSettings updatedSettings)
     {
         settings = WidgetSettingsStore.Normalize(updatedSettings);
         WidgetSettingsStore.Save(settings);
-        var result = AutoStartService.Apply(settings.LaunchAtLogin);
         RebuildTrayMenu();
-        return result;
     }
 
     /// <summary>重建仅含两个固定操作的托盘菜单，并用当前语言更新菜单标题和悬浮提示。</summary>

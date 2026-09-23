@@ -242,9 +242,9 @@ try {
 
     $settingsNames = Get-DescendantNames -Window $window
     $settingsRequired = if ($dashboardLabel -eq 'Dashboard') {
-        @('Refresh interval', 'Membership expiry', 'Language', 'Launch at sign-in', 'Save')
+        @('Refresh interval', 'Language')
     } else {
-        @('刷新间隔', '会员到期时间', '界面语言', '开机时启动', '保存')
+        @('刷新间隔', '界面语言')
     }
     foreach ($required in $settingsRequired) {
         if ($settingsNames -notcontains $required) { throw "Settings is missing: $required" }

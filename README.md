@@ -21,9 +21,8 @@
 - 每 10 秒自动刷新额度；刷新中的请求不会并行叠加。
 - 支持简体中文和 English；切换后主界面、设置页、托盘菜单和状态文本即时更新。
 - Windows 托盘区常驻图标，菜单仅有“主界面”和“退出小组件”；双击图标也打开主界面。
-- 主界面支持手动刷新、设置 5/10/30/60/120 秒刷新间隔、设置语言、会员到期兜底日期和开机启动。
-- 刷新间隔、语言、开机启动和手动日期保存到当前 Windows 用户配置；默认 10 秒、中文、开机启动，间隔范围限制为 1 到 3600 秒。
-- 开机启动仅写入当前用户的 `HKCU` Run 项；开发目录的 EXE 不会被注册为启动项。
+- 主界面支持手动刷新、设置 5/10/30/60/120 秒刷新间隔和设置语言。
+- 刷新间隔和语言保存到当前 Windows 用户配置；默认 10 秒、中文，间隔范围限制为 1 到 3600 秒。
 - 自动优先使用 Codex 桌面应用自带的原生 CLI，兼容 `bin/<版本散列>/codex.exe` 安装路径，避免误选缺少平台依赖的 npm 启动脚本。
 - 启动、登录、网络和协议错误会显示可操作的中文提示，不把服务端原始诊断写入界面。
 - 额度数据通过 `IQuotaProvider` 抽象，后续接入真实数据不需要重写 UI。
@@ -33,7 +32,7 @@
 
 [下载最新版本](https://github.com/danterange/codex-quota-widget/releases/latest)
 
-Windows 10/11 x64 用户下载 `*-setup.exe` 后双击安装；也可以下载 ZIP，全部解压后运行 `CodexQuotaWidget.exe`。两者都自带 .NET 8 运行时，不需要安装 SDK。安装包默认启用“开机时启动”，可在设置页关闭。
+Windows 10/11 x64 用户下载 `*-setup.exe` 后双击安装；也可以下载 ZIP，全部解压后运行 `CodexQuotaWidget.exe`。两者都自带 .NET 8 运行时，不需要安装 SDK。
 
 真实额度需要本机已安装并登录 Codex。安装包尚未签名，Windows 可能显示未知发布者提示。后续升级时退出小组件，再安装新版；当前没有程序内自动更新。
 
@@ -74,7 +73,6 @@ dotnet .\tests\QuotaChecks\bin\Release\net8.0-windows\QuotaChecks.dll --live
 - `MainWindow.xaml`：额度与设置两页布局和 VS Code 风格视觉。
 - `ViewModels/QuotaViewModel.cs`：倒计时、自动刷新、日期格式和界面状态。
 - `Services/QuotaProvider.cs`：额度提供器、明确命名的会员到期字段探测与本地演示实现。
-- `Services/AutoStartService.cs`：当前用户的安全开机启动注册。
 
 ## 许可证
 

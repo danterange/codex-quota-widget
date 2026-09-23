@@ -4,8 +4,8 @@
         Title="{Binding Text.WindowTitle}"
         Icon="assets/app.ico"
         SizeToContent="WidthAndHeight"
-        MinWidth="420"
-        MinHeight="270"
+        MinWidth="360"
+        MinHeight="220"
         WindowStartupLocation="CenterScreen"
         Topmost="True"
         WindowStyle="None"
@@ -16,10 +16,10 @@
         Loaded="MainWindowLoaded"
         Closing="MainWindowClosing"
         Closed="MainWindowClosed">
-    <Border Background="{StaticResource PanelBrush}" BorderBrush="{StaticResource PanelBorderBrush}" BorderThickness="1" CornerRadius="14" Effect="{StaticResource CardShadow}" SnapsToDevicePixels="True">
+    <Border Background="{StaticResource PanelBrush}" BorderBrush="{StaticResource PanelBorderBrush}" BorderThickness="1" CornerRadius="12" Effect="{StaticResource CardShadow}" SnapsToDevicePixels="True">
         <Grid>
             <Grid.RowDefinitions>
-                <RowDefinition Height="42" />
+                <RowDefinition Height="36" />
                 <RowDefinition Height="*" />
             </Grid.RowDefinitions>
 
@@ -29,28 +29,28 @@
                     <ColumnDefinition Width="*" />
                     <ColumnDefinition Width="Auto" />
                 </Grid.ColumnDefinitions>
-                <Border Grid.Column="0" Width="24" Height="24" Margin="10,0,0,0" Background="{StaticResource AccentSoftBrush}" CornerRadius="8">
-                    <Image Width="16" Height="16" Source="assets/app.ico" />
+                <Border Grid.Column="0" Width="22" Height="22" Margin="8,0,0,0" Background="{StaticResource AccentSoftBrush}" CornerRadius="7">
+                    <Image Width="14" Height="14" Source="assets/app.ico" />
                 </Border>
-                <StackPanel Grid.Column="1" Margin="10,0,0,0" VerticalAlignment="Center">
-                    <TextBlock Text="{Binding Text.WindowTitle}" FontSize="13" FontWeight="SemiBold" />
-                    <TextBlock Text="{Binding Text.MonitorSubtitle}" FontSize="9" Foreground="{StaticResource MutedTextBrush}" FontWeight="SemiBold" />
+                <StackPanel Grid.Column="1" Margin="8,0,0,0" VerticalAlignment="Center">
+                    <TextBlock Text="{Binding Text.WindowTitle}" FontSize="12" FontWeight="SemiBold" />
+                    <TextBlock Text="{Binding Text.MonitorSubtitle}" FontSize="8" Foreground="{StaticResource MutedTextBrush}" FontWeight="SemiBold" />
                 </StackPanel>
-                <Border Grid.Column="2" Margin="0,0,14,0" Padding="8,3" Background="{StaticResource AccentSoftBrush}" CornerRadius="8" VerticalAlignment="Center" AutomationProperties.Name="{Binding Text.LiveStatus}">
+                <Border Grid.Column="2" Margin="0,0,10,0" Padding="6,2" Background="{StaticResource AccentSoftBrush}" CornerRadius="7" VerticalAlignment="Center" AutomationProperties.Name="{Binding Text.LiveStatus}">
                     <StackPanel Orientation="Horizontal">
-                        <Ellipse Width="6" Height="6" Margin="0,0,5,0" Fill="{StaticResource SuccessBrush}" VerticalAlignment="Center" />
-                        <TextBlock Text="{Binding Text.LiveStatus}" FontSize="9" Foreground="{StaticResource AccentBrush}" FontWeight="SemiBold" />
+                        <Ellipse Width="5" Height="5" Margin="0,0,4,0" Fill="{StaticResource SuccessBrush}" VerticalAlignment="Center" />
+                        <TextBlock Text="{Binding Text.LiveStatus}" FontSize="8" Foreground="{StaticResource AccentBrush}" FontWeight="SemiBold" />
                     </StackPanel>
                 </Border>
             </Grid>
 
-            <Grid Grid.Row="1" Margin="8,2,8,8">
+            <Grid Grid.Row="1" Margin="6,2,6,6">
                 <Grid.ColumnDefinitions>
-                    <ColumnDefinition Width="60" />
+                    <ColumnDefinition Width="46" />
                     <ColumnDefinition Width="*" />
                 </Grid.ColumnDefinitions>
 
-                <Border Grid.Column="0" Padding="8,10" Background="{StaticResource RailBrush}" BorderBrush="{StaticResource CardBorderBrush}" BorderThickness="1" CornerRadius="12" ClipToBounds="True">
+                <Border Grid.Column="0" Padding="5,8" Background="{StaticResource RailBrush}" BorderBrush="{StaticResource CardBorderBrush}" BorderThickness="1" CornerRadius="10" ClipToBounds="True">
                     <Grid>
                         <Grid.RowDefinitions>
                             <RowDefinition Height="*" />
@@ -64,108 +64,108 @@
                                 <Path Width="17" Height="17" Stretch="Uniform" Fill="{Binding Foreground, RelativeSource={RelativeSource AncestorType=RadioButton}}" Data="{StaticResource SettingsIconGeometry}" />
                             </RadioButton>
                         </StackPanel>
-                        <Button x:Name="RailRefreshButton" Grid.Row="1" Width="36" Height="36" Padding="0" HorizontalAlignment="Center" Style="{StaticResource IconButtonStyle}" ToolTip="{Binding Text.RefreshNow}" AutomationProperties.Name="{Binding Text.RefreshNow}" AutomationProperties.HelpText="{Binding Text.RefreshNow}" Click="RefreshClicked" KeyboardNavigation.TabIndex="2">
-                            <Path Width="16" Height="16" Stretch="Uniform" Fill="{Binding Foreground, RelativeSource={RelativeSource AncestorType=Button}}" Data="{StaticResource RefreshIconGeometry}" />
+                        <Button x:Name="RailRefreshButton" Grid.Row="1" Width="28" Height="28" Padding="0" HorizontalAlignment="Center" Style="{StaticResource IconButtonStyle}" ToolTip="{Binding Text.RefreshNow}" AutomationProperties.Name="{Binding Text.RefreshNow}" AutomationProperties.HelpText="{Binding Text.RefreshNow}" Click="RefreshClicked" KeyboardNavigation.TabIndex="2">
+                            <Path Width="14" Height="14" Stretch="Uniform" Fill="{Binding Foreground, RelativeSource={RelativeSource AncestorType=Button}}" Data="{StaticResource RefreshIconGeometry}" />
                         </Button>
                     </Grid>
                 </Border>
 
                 <Grid x:Name="MainContentHost" Grid.Column="1" Background="{StaticResource PanelBrush}">
-                    <Border x:Name="DashboardContent" Padding="10,8" Background="{StaticResource PanelBrush}" Visibility="Visible">
+                    <Border x:Name="DashboardContent" Padding="8,6" Background="{StaticResource PanelBrush}" Visibility="Visible">
                             <Grid>
                                 <Grid.RowDefinitions>
-                                    <RowDefinition Height="34" />
+                                    <RowDefinition Height="28" />
                                     <RowDefinition Height="Auto" />
                                     <RowDefinition Height="Auto" />
                                     <RowDefinition Height="Auto" />
                                 </Grid.RowDefinitions>
 
-                                <Grid Grid.Row="0" Margin="0,0,0,5">
+                                <Grid Grid.Row="0" Margin="0,0,0,3">
                                     <Grid.ColumnDefinitions>
                                         <ColumnDefinition Width="Auto" />
                                         <ColumnDefinition Width="Auto" />
                                         <ColumnDefinition Width="*" />
                                     </Grid.ColumnDefinitions>
                                     <Ellipse Grid.Column="0" Width="8" Height="8" Margin="0,0,7,0" VerticalAlignment="Center" Fill="{StaticResource AccentBrush}" />
-                                    <TextBlock Grid.Column="1" Text="Codex" FontSize="16" FontWeight="SemiBold" VerticalAlignment="Center" />
+                                    <TextBlock Grid.Column="1" Text="Codex" FontSize="14" FontWeight="SemiBold" VerticalAlignment="Center" />
                                     <Border Grid.Column="2" Margin="8,0,0,0" Padding="7,3" HorizontalAlignment="Left" VerticalAlignment="Center" Background="{StaticResource AccentSoftBrush}" CornerRadius="6">
-                                        <TextBlock Text="{Binding PlanName}" FontSize="10" Foreground="{StaticResource AccentBrush}" FontWeight="SemiBold" />
+                                        <TextBlock Text="{Binding PlanName}" FontSize="9" Foreground="{StaticResource AccentBrush}" FontWeight="SemiBold" />
                                     </Border>
                                 </Grid>
 
-                                <Border Grid.Row="1" Margin="0,0,0,6" Padding="8,7" Background="{StaticResource CardBrush}" BorderBrush="{StaticResource CardBorderBrush}" BorderThickness="1" CornerRadius="10" Effect="{StaticResource CardShadow}" Visibility="{Binding FiveHourVisibility}">
+                                <Border Grid.Row="1" Margin="0,0,0,4" Padding="6,5" Background="{StaticResource CardBrush}" BorderBrush="{StaticResource CardBorderBrush}" BorderThickness="1" CornerRadius="8" Effect="{StaticResource CardShadow}" Visibility="{Binding FiveHourVisibility}">
                                     <Grid>
                                         <Grid.RowDefinitions>
-                                            <RowDefinition Height="30" />
+                                            <RowDefinition Height="26" />
                                             <RowDefinition Height="Auto" />
                                         </Grid.RowDefinitions>
                                         <Grid.ColumnDefinitions>
-                                            <ColumnDefinition Width="66" />
+                                            <ColumnDefinition Width="56" />
                                             <ColumnDefinition Width="*" />
-                                            <ColumnDefinition Width="54" />
+                                            <ColumnDefinition Width="44" />
                                         </Grid.ColumnDefinitions>
                                         <StackPanel Grid.Row="0" Grid.Column="0" Orientation="Horizontal" VerticalAlignment="Center">
-                                            <Border Width="23" Height="23" Background="{StaticResource AccentSoftBrush}" CornerRadius="7">
-                                                <Path Width="14" Height="14" Stretch="Uniform" Fill="{StaticResource AccentBrush}" Data="{StaticResource BoltIconGeometry}" />
+                                            <Border Width="20" Height="20" Background="{StaticResource AccentSoftBrush}" CornerRadius="6">
+                                                <Path Width="12" Height="12" Stretch="Uniform" Fill="{StaticResource AccentBrush}" Data="{StaticResource BoltIconGeometry}" />
                                             </Border>
-                                            <TextBlock Text="5h" Margin="6,0,0,0" FontSize="12" Foreground="{StaticResource AccentBrush}" FontWeight="SemiBold" VerticalAlignment="Center" />
+                                            <TextBlock Text="5h" Margin="5,0,0,0" FontSize="11" Foreground="{StaticResource AccentBrush}" FontWeight="SemiBold" VerticalAlignment="Center" />
                                         </StackPanel>
-                                        <ProgressBar Grid.Row="0" Grid.Column="1" Height="8" Margin="0,0,8,0" VerticalAlignment="Center" Minimum="0" Maximum="100" Value="{Binding FiveHourPercent, Mode=OneWay}" Background="#333333" Foreground="{StaticResource AccentBrush}" BorderThickness="0" />
-                                        <TextBlock Grid.Row="0" Grid.Column="2" Text="{Binding FiveHourPercentText}" FontSize="21" FontWeight="SemiBold" HorizontalAlignment="Right" VerticalAlignment="Center" />
-                                        <Border Grid.Row="1" Grid.Column="0" Grid.ColumnSpan="3" Margin="0,3,0,0" Padding="7,5" Background="{StaticResource AccentSoftBrush}" BorderBrush="{StaticResource CardBorderBrush}" BorderThickness="1" CornerRadius="6" ToolTip="{Binding FiveHourResetText}" AutomationProperties.Name="{Binding FiveHourResetText}">
+                                        <ProgressBar Grid.Row="0" Grid.Column="1" Height="6" Margin="0,0,6,0" VerticalAlignment="Center" Minimum="0" Maximum="100" Value="{Binding FiveHourPercent, Mode=OneWay}" Background="#333333" Foreground="{StaticResource AccentBrush}" BorderThickness="0" />
+                                        <TextBlock Grid.Row="0" Grid.Column="2" Text="{Binding FiveHourPercentText}" FontSize="18" FontWeight="SemiBold" HorizontalAlignment="Right" VerticalAlignment="Center" />
+                                        <Border Grid.Row="1" Grid.Column="0" Grid.ColumnSpan="3" Margin="0,2,0,0" Padding="6,4" Background="{StaticResource AccentSoftBrush}" BorderBrush="{StaticResource CardBorderBrush}" BorderThickness="1" CornerRadius="5" ToolTip="{Binding FiveHourResetText}" AutomationProperties.Name="{Binding FiveHourResetText}">
                                             <Grid>
                                                 <Grid.ColumnDefinitions>
                                                     <ColumnDefinition Width="Auto" />
                                                     <ColumnDefinition Width="*" />
                                                 </Grid.ColumnDefinitions>
-                                                <Path Width="13" Height="13" Margin="0,0,6,0" Stretch="Uniform" Fill="{StaticResource AccentBrush}" Data="{StaticResource CalendarIconGeometry}" />
-                                                <TextBlock Grid.Column="1" Text="{Binding FiveHourResetText}" FontSize="12.5" FontWeight="SemiBold" Foreground="{StaticResource PrimaryTextBrush}" TextWrapping="Wrap" />
+                                                <Path Width="12" Height="12" Margin="0,0,5,0" Stretch="Uniform" Fill="{StaticResource AccentBrush}" Data="{StaticResource CalendarIconGeometry}" />
+                                                <TextBlock Grid.Column="1" Text="{Binding FiveHourResetText}" FontSize="11" FontWeight="SemiBold" Foreground="{StaticResource PrimaryTextBrush}" TextWrapping="Wrap" />
                                             </Grid>
                                         </Border>
                                     </Grid>
                                 </Border>
 
-                                <Border Grid.Row="2" Margin="0,0,0,6" Padding="8,7" Background="{StaticResource CardBrush}" BorderBrush="{StaticResource CardBorderBrush}" BorderThickness="1" CornerRadius="10" Effect="{StaticResource CardShadow}" Visibility="{Binding SevenDayVisibility}">
+                                <Border Grid.Row="2" Margin="0,0,0,4" Padding="6,5" Background="{StaticResource CardBrush}" BorderBrush="{StaticResource CardBorderBrush}" BorderThickness="1" CornerRadius="8" Effect="{StaticResource CardShadow}" Visibility="{Binding SevenDayVisibility}">
                                     <Grid>
                                         <Grid.RowDefinitions>
-                                            <RowDefinition Height="30" />
+                                            <RowDefinition Height="26" />
                                             <RowDefinition Height="Auto" />
                                         </Grid.RowDefinitions>
                                         <Grid.ColumnDefinitions>
-                                            <ColumnDefinition Width="66" />
+                                            <ColumnDefinition Width="56" />
                                             <ColumnDefinition Width="*" />
-                                            <ColumnDefinition Width="54" />
+                                            <ColumnDefinition Width="44" />
                                         </Grid.ColumnDefinitions>
                                         <StackPanel Grid.Row="0" Grid.Column="0" Orientation="Horizontal" VerticalAlignment="Center">
-                                            <Border Width="23" Height="23" Background="{StaticResource WeeklySoftBrush}" CornerRadius="7">
-                                                <Path Width="14" Height="14" Stretch="Uniform" Fill="{StaticResource WeeklyBrush}" Data="{StaticResource CalendarIconGeometry}" />
+                                            <Border Width="20" Height="20" Background="{StaticResource WeeklySoftBrush}" CornerRadius="6">
+                                                <Path Width="12" Height="12" Stretch="Uniform" Fill="{StaticResource WeeklyBrush}" Data="{StaticResource CalendarIconGeometry}" />
                                             </Border>
-                                            <TextBlock Text="7d" Margin="6,0,0,0" FontSize="12" Foreground="{StaticResource WeeklyBrush}" FontWeight="SemiBold" VerticalAlignment="Center" />
+                                            <TextBlock Text="7d" Margin="5,0,0,0" FontSize="11" Foreground="{StaticResource WeeklyBrush}" FontWeight="SemiBold" VerticalAlignment="Center" />
                                         </StackPanel>
-                                        <ProgressBar Grid.Row="0" Grid.Column="1" Height="8" Margin="0,0,8,0" VerticalAlignment="Center" Minimum="0" Maximum="100" Value="{Binding SevenDayPercent, Mode=OneWay}" Background="#333333" Foreground="{StaticResource WeeklyBrush}" BorderThickness="0" />
-                                        <TextBlock Grid.Row="0" Grid.Column="2" Text="{Binding SevenDayPercentText}" FontSize="21" FontWeight="SemiBold" HorizontalAlignment="Right" VerticalAlignment="Center" />
-                                        <Border Grid.Row="1" Grid.Column="0" Grid.ColumnSpan="3" Margin="0,3,0,0" Padding="7,5" Background="{StaticResource WeeklySoftBrush}" BorderBrush="{StaticResource CardBorderBrush}" BorderThickness="1" CornerRadius="6" ToolTip="{Binding SevenDayResetText}" AutomationProperties.Name="{Binding SevenDayResetText}">
+                                        <ProgressBar Grid.Row="0" Grid.Column="1" Height="6" Margin="0,0,6,0" VerticalAlignment="Center" Minimum="0" Maximum="100" Value="{Binding SevenDayPercent, Mode=OneWay}" Background="#333333" Foreground="{StaticResource WeeklyBrush}" BorderThickness="0" />
+                                        <TextBlock Grid.Row="0" Grid.Column="2" Text="{Binding SevenDayPercentText}" FontSize="18" FontWeight="SemiBold" HorizontalAlignment="Right" VerticalAlignment="Center" />
+                                        <Border Grid.Row="1" Grid.Column="0" Grid.ColumnSpan="3" Margin="0,2,0,0" Padding="6,4" Background="{StaticResource WeeklySoftBrush}" BorderBrush="{StaticResource CardBorderBrush}" BorderThickness="1" CornerRadius="5" ToolTip="{Binding SevenDayResetText}" AutomationProperties.Name="{Binding SevenDayResetText}">
                                             <Grid>
                                                 <Grid.ColumnDefinitions>
                                                     <ColumnDefinition Width="Auto" />
                                                     <ColumnDefinition Width="*" />
                                                 </Grid.ColumnDefinitions>
-                                                <Path Width="13" Height="13" Margin="0,0,6,0" Stretch="Uniform" Fill="{StaticResource WeeklyBrush}" Data="{StaticResource CalendarIconGeometry}" />
-                                                <TextBlock Grid.Column="1" Text="{Binding SevenDayResetText}" FontSize="12.5" FontWeight="SemiBold" Foreground="{StaticResource PrimaryTextBrush}" TextWrapping="Wrap" />
+                                                <Path Width="12" Height="12" Margin="0,0,5,0" Stretch="Uniform" Fill="{StaticResource WeeklyBrush}" Data="{StaticResource CalendarIconGeometry}" />
+                                                <TextBlock Grid.Column="1" Text="{Binding SevenDayResetText}" FontSize="11" FontWeight="SemiBold" Foreground="{StaticResource PrimaryTextBrush}" TextWrapping="Wrap" />
                                             </Grid>
                                         </Border>
                                     </Grid>
                                 </Border>
 
-                                <Border Grid.Row="3" Margin="0,1,0,0" Padding="8,6" Background="{StaticResource SurfaceBrush}" BorderBrush="{StaticResource CardBorderBrush}" BorderThickness="1" CornerRadius="8">
+                                <Border Grid.Row="3" Margin="0,1,0,0" Padding="6,5" Background="{StaticResource SurfaceBrush}" BorderBrush="{StaticResource CardBorderBrush}" BorderThickness="1" CornerRadius="7">
                                     <Grid>
                                         <Grid.ColumnDefinitions>
                                             <ColumnDefinition Width="*" />
                                             <ColumnDefinition Width="Auto" />
                                         </Grid.ColumnDefinitions>
                                         <StackPanel Grid.Column="0" Orientation="Horizontal" VerticalAlignment="Center">
-                                            <Path Width="14" Height="14" Margin="0,0,6,0" Stretch="Uniform" Fill="{StaticResource SecondaryTextBrush}" Data="{StaticResource CalendarIconGeometry}" />
-                                            <TextBlock Text="{Binding MembershipText}" FontSize="12.5" Foreground="{StaticResource SecondaryTextBrush}" TextTrimming="CharacterEllipsis" VerticalAlignment="Center" ToolTip="{Binding MembershipText}" />
+                                            <Path Width="12" Height="12" Margin="0,0,5,0" Stretch="Uniform" Fill="{StaticResource SecondaryTextBrush}" Data="{StaticResource CalendarIconGeometry}" />
+                                            <TextBlock Text="{Binding MembershipText}" FontSize="11" Foreground="{StaticResource SecondaryTextBrush}" TextTrimming="CharacterEllipsis" VerticalAlignment="Center" ToolTip="{Binding MembershipText}" />
                                         </StackPanel>
                                         <Border Grid.Column="1" MinWidth="24" Height="19" Margin="8,0,0,0" Padding="5,0" Background="{StaticResource SuccessBrush}" CornerRadius="9" VerticalAlignment="Center" ToolTip="{Binding ResetCreditsDisplayText}">
                                             <StackPanel Orientation="Horizontal">
@@ -178,19 +178,16 @@
                             </Grid>
                     </Border>
 
-                    <Border x:Name="SettingsContent" Padding="10,7" Background="{StaticResource PanelBrush}" Visibility="Collapsed">
+                    <Border x:Name="SettingsContent" Padding="8,6" Background="{StaticResource PanelBrush}" Visibility="Collapsed">
                             <Grid>
                                 <Grid.ColumnDefinitions>
-                                    <ColumnDefinition Width="112" />
-                                    <ColumnDefinition Width="*" MinWidth="180" MaxWidth="240" />
+                                    <ColumnDefinition Width="90" />
+                                    <ColumnDefinition Width="*" MinWidth="160" MaxWidth="200" />
                                 </Grid.ColumnDefinitions>
                                 <Grid.RowDefinitions>
-                                    <RowDefinition Height="30" />
-                                    <RowDefinition Height="32" />
-                                    <RowDefinition Height="34" />
-                                    <RowDefinition Height="24" />
-                                    <RowDefinition Height="32" />
-                                    <RowDefinition Height="24" />
+                                    <RowDefinition Height="26" />
+                                    <RowDefinition Height="28" />
+                                    <RowDefinition Height="28" />
                                     <RowDefinition Height="*" />
                                 </Grid.RowDefinitions>
 
@@ -208,26 +205,13 @@
                                     <ComboBoxItem Tag="120" Content="{Binding Text.Interval120Seconds}" />
                                 </ComboBox>
 
-                                <TextBlock Grid.Row="2" Grid.Column="0" Text="{Binding Text.MembershipExpiry}" Foreground="{StaticResource SecondaryTextBrush}" VerticalAlignment="Center" />
-                                <Grid Grid.Row="2" Grid.Column="1">
-                                    <Grid.ColumnDefinitions>
-                                        <ColumnDefinition Width="*" />
-                                        <ColumnDefinition Width="58" />
-                                    </Grid.ColumnDefinitions>
-                                    <TextBox x:Name="MembershipExpiryTextBox" Grid.Column="0" Height="24" ToolTip="{Binding Text.MembershipExpiryPlaceholder}" />
-                                    <Button Grid.Column="1" Width="52" Height="24" Margin="6,0,0,0" Padding="4,0" Content="{Binding Text.Save}" Style="{StaticResource PrimaryButtonStyle}" Click="SaveMembershipExpiryClicked" />
-                                </Grid>
-
-                                <TextBlock Grid.Row="3" Grid.Column="1" FontSize="10" Foreground="{StaticResource MutedTextBrush}" Text="{Binding Text.MembershipExpiryHint}" ToolTip="{Binding Text.MembershipExpiryPlaceholder}" TextWrapping="NoWrap" TextTrimming="CharacterEllipsis" VerticalAlignment="Center" />
-
-                                <TextBlock Grid.Row="4" Grid.Column="0" Text="{Binding Text.Language}" Foreground="{StaticResource SecondaryTextBrush}" VerticalAlignment="Center" />
-                                <ComboBox x:Name="LanguageComboBox" Grid.Row="4" Grid.Column="1" Height="24" SelectionChanged="LanguageSelectionChanged">
+                                <TextBlock Grid.Row="2" Grid.Column="0" Text="{Binding Text.Language}" Foreground="{StaticResource SecondaryTextBrush}" VerticalAlignment="Center" />
+                                <ComboBox x:Name="LanguageComboBox" Grid.Row="2" Grid.Column="1" Height="24" SelectionChanged="LanguageSelectionChanged">
                                     <ComboBoxItem Tag="SimplifiedChinese" Content="{Binding Text.SimplifiedChinese}" />
                                     <ComboBoxItem Tag="English" Content="{Binding Text.English}" />
                                 </ComboBox>
 
-                                <CheckBox x:Name="LaunchAtLoginCheckBox" Grid.Row="5" Grid.Column="1" Content="{Binding Text.LaunchAtLogin}" Checked="LaunchAtLoginChanged" Unchecked="LaunchAtLoginChanged" VerticalAlignment="Center" />
-                                <TextBlock x:Name="SettingsStatusTextBlock" Grid.Row="6" Grid.Column="1" FontSize="10" Foreground="{StaticResource SecondaryTextBrush}" TextWrapping="Wrap" VerticalAlignment="Top" />
+                                <TextBlock x:Name="SettingsStatusTextBlock" Grid.Row="3" Grid.Column="1" FontSize="10" Foreground="{StaticResource SecondaryTextBrush}" TextWrapping="Wrap" VerticalAlignment="Top" />
                             </Grid>
                     </Border>
                 </Grid>

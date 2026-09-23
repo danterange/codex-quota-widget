@@ -17,6 +17,4 @@ public enum AppLanguage
 /// </summary>
 public sealed record WidgetSettings(
     int RefreshIntervalSeconds = 10,
-    AppLanguage Language = AppLanguage.SimplifiedChinese,
-    bool LaunchAtLogin = true,
-    DateTimeOffset? ManualMembershipExpiresAt = null);
+    AppLanguage Language = AppLanguage.SimplifiedChinese);

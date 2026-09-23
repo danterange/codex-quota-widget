@@ -28,7 +28,8 @@ internal static class Program
                     Environment.GetEnvironmentVariable("PATH", EnvironmentVariableTarget.User));
                 var result = new CodexQuotaProvider().GetSnapshotAsync(CancellationToken.None).GetAwaiter().GetResult();
                 Check(result.FiveHour is not null || result.SevenDay is not null, "普通桌面环境返回真实额度");
-                Console.WriteLine($"LIVE plan={result.PlanName} 5h={result.FiveHour?.Percent} weeklyRemaining={result.SevenDay?.Percent} resets={result.SevenDay?.ResetAt:O} resetCredits={result.ResetCredits}");
+                Check(result.MembershipExpiresAt is not null, "普通桌面环境返回自动会员到期时间");
+                Console.WriteLine($"LIVE plan={result.PlanName} 5h={result.FiveHour?.Percent} weeklyRemaining={result.SevenDay?.Percent} resets={result.SevenDay?.ResetAt:O} membership={result.MembershipExpiresAt:O} resetCredits={result.ResetCredits}");
                 CheckDispatcher(new CodexQuotaProvider(), live: true);
             }
             else
@@ -49,29 +50,42 @@ internal static class Program
         }
     }
 
-    /// <summary>验证默认偏好、语言/手动到期时间持久化、范围校验和安全的开机启动命令。</summary>
+    /// <summary>验证默认偏好、语言持久化和刷新范围校验。</summary>
     private static void CheckSettings()
     {
         var path = Path.Combine(Path.GetTempPath(), "quota-settings-" + Guid.NewGuid().ToString("N"), "settings.json");
         var defaults = WidgetSettingsStore.Load(path);
-        Check(defaults.RefreshIntervalSeconds == 10 && defaults.Language == AppLanguage.SimplifiedChinese && defaults.LaunchAtLogin,
-            "默认刷新间隔、中文和开机启动偏好正确");
+        Check(defaults.RefreshIntervalSeconds == 10 && defaults.Language == AppLanguage.SimplifiedChinese,
+            "默认刷新间隔和中文偏好正确");
         Directory.CreateDirectory(Path.GetDirectoryName(path)!);
         File.WriteAllText(path, "{\"RefreshIntervalSeconds\":30}");
         var upgraded = WidgetSettingsStore.Load(path);
-        Check(upgraded.RefreshIntervalSeconds == 30 && upgraded.Language == AppLanguage.SimplifiedChinese && upgraded.LaunchAtLogin,
-            "旧版仅有刷新间隔的配置会升级为中文和开机启动默认值");
-        var manualExpiry = new DateTimeOffset(2026, 9, 22, 12, 0, 0, TimeSpan.FromHours(8));
-        WidgetSettingsStore.Save(new WidgetSettings(25, AppLanguage.English, false, manualExpiry), path);
+        Check(upgraded.RefreshIntervalSeconds == 30 && upgraded.Language == AppLanguage.SimplifiedChinese,
+            "旧版仅有刷新间隔的配置会升级为中文");
+        WidgetSettingsStore.Save(new WidgetSettings(25, AppLanguage.English), path);
         var saved = WidgetSettingsStore.Load(path);
-        Check(saved.RefreshIntervalSeconds == 25 && saved.Language == AppLanguage.English && !saved.LaunchAtLogin
-            && saved.ManualMembershipExpiresAt == manualExpiry, "设置页偏好可完整保存");
+        Check(saved.RefreshIntervalSeconds == 25 && saved.Language == AppLanguage.English, "设置页偏好可完整保存");
         Check(WidgetSettingsStore.Normalize(new WidgetSettings(0)).RefreshIntervalSeconds == 1, "刷新间隔最小为一秒");
-        Check(WidgetSettingsStore.Normalize(new WidgetSettings(5000)).RefreshIntervalSeconds == 3600, "刷新间隔最大为一小时");
-        Check(AutoStartService.CreateCommand(@"C:\Portable Apps\CodexQuotaWidget.exe") == "\"C:\\Portable Apps\\CodexQuotaWidget.exe\"",
-            "便携版开机启动命令带完整引号");
-        Check(AutoStartService.CreateCommand(@"C:\source\bin\Release\CodexQuotaWidget.exe") is null,
-            "开发输出目录不会注册开机启动");
+                Check(WidgetSettingsStore.Normalize(new WidgetSettings(5000)).RefreshIntervalSeconds == 3600, "刷新间隔最大为一小时");
+        CheckAuthMembershipReader();
+    }
+
+    /// <summary>验证从本地 JWT 的 OpenAI 认证声明读取订阅有效期，不把令牌本身暴露到测试输出。</summary>
+    private static void CheckAuthMembershipReader()
+    {
+        var path = Path.Combine(Path.GetTempPath(), "quota-auth-" + Guid.NewGuid().ToString("N") + ".json");
+        const string payload = "{\"https://api.openai.com/auth\":{\"chatgpt_subscription_active_until\":\"2026-10-10T17:42:32+08:00\"}}";
+        var encoded = Convert.ToBase64String(System.Text.Encoding.UTF8.GetBytes(payload)).TrimEnd('=').Replace('+', '-').Replace('/', '_');
+        File.WriteAllText(path, "{\"tokens\":{\"id_token\":\"header." + encoded + ".signature\"}}");
+        try
+        {
+            Check(CodexAuthMembershipReader.ReadFromFile(path) == new DateTimeOffset(2026, 10, 10, 17, 42, 32, TimeSpan.FromHours(8)).ToLocalTime(),
+                "本地登录令牌可读取会员到期时间");
+        }
+        finally
+        {
+            File.Delete(path);
+        }
     }
 
     /// <summary>验证中英文会员时间格式与用户指定的中文精确样式，避免把分钟倒计时格式回归为简写。</summary>
@@ -90,9 +104,6 @@ internal static class Program
             == expectedChinese, "中文额度条到期格式精确匹配");
         Check(QuotaViewModel.FormatMembershipExpiry(expiry, now, AppLanguage.English)
             == expectedEnglish, "英文会员到期格式正确");
-        Check(QuotaViewModel.SelectMembershipExpiry(expiry, now) == expiry
-            && QuotaViewModel.SelectMembershipExpiry(null, expiry) == expiry,
-            "自动会员日期优先且缺失时回退到手动日期");
         Check(LocalizedTextProvider.Get(AppLanguage.English).SettingsTab == "Settings", "英文设置页文本可用");
     }
 

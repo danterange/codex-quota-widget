@@ -22,7 +22,6 @@ public sealed class QuotaViewModel : INotifyPropertyChanged, IDisposable
     private string? errorMessage;
     private string errorDetail = string.Empty;
     private AppLanguage language;
-    private DateTimeOffset? manualMembershipExpiresAt;
     private bool refreshing;
     private bool disposed;
 
@@ -34,7 +33,6 @@ public sealed class QuotaViewModel : INotifyPropertyChanged, IDisposable
         var initialSettings = settings ?? new WidgetSettings(RefreshIntervalSeconds: refreshIntervalSeconds);
         quotaProvider = provider ?? CreateDefaultProvider();
         language = initialSettings.Language;
-        manualMembershipExpiresAt = initialSettings.ManualMembershipExpiresAt;
         RefreshIntervalSeconds = Math.Clamp(initialSettings.RefreshIntervalSeconds, 1, 3600);
         refreshTimer = new DispatcherTimer { Interval = TimeSpan.FromSeconds(RefreshIntervalSeconds) };
         refreshTimer.Tick += RefreshTimerTick;
@@ -83,13 +81,12 @@ public sealed class QuotaViewModel : INotifyPropertyChanged, IDisposable
     }
 
     /// <summary>
-    /// 应用设置页保存的偏好，使语言、手动会员到期兜底和刷新间隔在不重启窗口的情况下立即生效。
+    /// 应用设置页保存的偏好，使语言和刷新间隔在不重启窗口的情况下立即生效。
     /// </summary>
     public void ApplySettings(WidgetSettings settings)
     {
         var languageChanged = language != settings.Language;
         language = settings.Language;
-        manualMembershipExpiresAt = settings.ManualMembershipExpiresAt;
         SetRefreshIntervalSeconds(settings.RefreshIntervalSeconds);
 
         if (languageChanged)
@@ -276,16 +273,10 @@ public sealed class QuotaViewModel : INotifyPropertyChanged, IDisposable
         };
     }
 
-    /// <summary>自动数据存在时优先展示；只有协议未提供到期时间才使用用户保存的本地兜底日期。</summary>
+    /// <summary>返回协议读取的会员到期时间；未登录或服务端缺失时由界面显示未知状态。</summary>
     private DateTimeOffset? GetMembershipExpiry()
     {
-        return SelectMembershipExpiry(snapshot?.MembershipExpiresAt, manualMembershipExpiresAt);
-    }
-
-    /// <summary>选择协议明确提供的自动到期时间；只有它缺失时才允许本地手动日期作为显示兜底。</summary>
-    internal static DateTimeOffset? SelectMembershipExpiry(DateTimeOffset? automaticExpiry, DateTimeOffset? manualExpiry)
-    {
-        return automaticExpiry ?? manualExpiry;
+        return snapshot?.MembershipExpiresAt;
     }
 
     /// <summary>
