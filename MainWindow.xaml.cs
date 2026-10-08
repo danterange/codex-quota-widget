@@ -149,6 +149,12 @@ public partial class MainWindow : Window
         Topmost = !Topmost;
     }
 
+    /// <summary>将窗口吸附到当前显示器上离当前位置最近的角落，并在工作区边缘保留两像素间距。</summary>
+    private void SnapClicked(object sender, RoutedEventArgs e)
+    {
+        WindowWorkArea.SnapToNearestCorner(this, 2);
+    }
+
     /// <summary>先锁定当前尺寸再最小化，避免启动异步读取在后台改写还原尺寸。</summary>
     private void MinimizeClicked(object sender, RoutedEventArgs e)
     {

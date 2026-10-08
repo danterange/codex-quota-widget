@@ -8,7 +8,7 @@
 
 | 方案 | 信息结构及主路径 | 优点 | 代价/适用条件 |
 | --- | --- | --- | --- |
-| A 单列玻璃面板（已实现） | 标题控制 → 状态/图标导航 → 5h/7d 卡片 → 会员日期；设置替换卡片区域 | 日期始终可见，去侧栏，宽度 350；复用现有绑定与设置 | 比极简状态条高，但无需展开才能读日期；适合日常常驻 |
+| A 单列玻璃面板（已实现） | 标题控制 → 状态/图标导航 → 5h/7d 卡片 → 会员日期；设置替换卡片区域 | 日期始终可见，去侧栏，宽度 320；复用现有绑定与设置 | 比极简状态条高，但无需展开才能读日期；适合日常常驻 |
 | B 横向状态条 | 标题控制 → 两组百分比；点击详情展开日期和设置 | 收起时高度最低，适合屏幕边缘 | 完整到期时间需要额外点击；信息发现性弱，不符合此前日期直接展示偏好 |
 | C 双列额度面板 | 标题控制 → 并列 5h/7d → 底部日期/设置；窄窗口回到单列 | 两额度可同时横向比较，适合宽屏 | 完整日期需要更多宽度或多行；最小面积不及 A |
 
@@ -17,7 +17,9 @@
 ## 视觉与交互
 
 - 深蓝至灰紫的低饱和渐变；原生 Desktop Acrylic 背景模糊，仅背景透明，正文不降低透明度。
-- 标题栏 34 DIP，按钮 28 DIP，线框图标有工具提示及可访问名称；支持 hover、按下、禁用、键盘焦点。
+- 标题栏 32 DIP，按钮 28 DIP，线框图标有工具提示及可访问名称；支持 hover、按下、禁用、键盘焦点。
+- 置顶按钮左侧新增四角吸附按钮；按当前位置选择最近角落，以工作区（任务栏上方）为边界并保留 2px 间距。
+- 日期 ToolTip 使用深色半透明背景、亮色文字、边框和阴影，避免默认白底与深色文字主题冲突。
 - 默认置顶；图钉高亮与实际状态绑定。置顶选择仅在当前会话生效。
 - 单次额度读取失败只显示连接中/重试，不立即显示异常；连续两次失败才进入红色异常状态，成功后立即恢复运行中。
 - 标题可拖动、双击最大化；四边可调整大小。最大化按当前屏幕工作区计算，避免覆盖任务栏。
@@ -32,7 +34,7 @@
 
 主要文件：MainWindow.xaml、MainWindow.xaml.cs、App.xaml、App.xaml.cs、Models/LocalizedText.cs、ViewModels/QuotaViewModel.cs。
 
-新增 WindowBackdrop.cs 负责材质；WindowWorkArea.cs 负责 Win32 工作区最大化。无新增第三方依赖。按 UI 设计技能收敛单列/弱装饰/图标导航，按 C# 复审修正语言通知和最大化工作区。
+新增 WindowBackdrop.cs 负责材质；WindowWorkArea.cs 负责 Win32 工作区最大化与角落吸附。无新增第三方依赖。按 UI 设计技能收敛单列/弱装饰/图标导航，按 C# 复审修正语言通知和最大化工作区。
 
 验证命令（在仓库根目录运行）：
 
@@ -55,7 +57,7 @@ powershell.exe -NoLogo -NoProfile -ExecutionPolicy Bypass -File scripts/Test-UiS
 - 正常 Close 隐藏窗口，同一窗口可再次 Show；验收参数下 Close 能结束测试进程。
 - PowerShell 语法/UTF-8 BOM 检查通过；git diff --check 无空白问题。
 
-截图输出在忽略目录 artifacts/ui-test：dashboard.png、settings.png、desktop-glass.png、narrow.png、wide.png、english-dashboard.png、english-settings.png。截图同时检查剩余时间简化、图标悬浮提示、颜色区间和连接状态；演示数据不代表真实账号。
+截图输出在忽略目录 artifacts/ui-test：dashboard.png、settings.png、desktop-glass.png、narrow.png、wide.png、english-dashboard.png、english-settings.png、tooltip2.png。截图同时检查剩余时间简化、图标悬浮提示、颜色区间和连接状态；演示数据不代表真实账号。
 
 ## 边界与后续验收
 

@@ -5,7 +5,7 @@
     <Application.Resources>
         <SolidColorBrush x:Key="LineBrush" Color="#24CEDFFF" />
         <LinearGradientBrush x:Key="GlassBrush" StartPoint="0,0" EndPoint="1,1">
-            <GradientStop Color="#901E3149" Offset="0" /><GradientStop Color="#A0171D2D" Offset="0.55" /><GradientStop Color="#932E2648" Offset="1" />
+            <GradientStop Color="#7A1E3149" Offset="0" /><GradientStop Color="#88171D2D" Offset="0.55" /><GradientStop Color="#802E2648" Offset="1" />
         </LinearGradientBrush>
         <LinearGradientBrush x:Key="OpaqueGlassBrush" StartPoint="0,0" EndPoint="1,1">
             <GradientStop Color="#1E3149" Offset="0" /><GradientStop Color="#171D2D" Offset="0.55" /><GradientStop Color="#2E2648" Offset="1" />
@@ -79,6 +79,35 @@
             <Setter Property="FontFamily" Value="Segoe UI" />
             <Setter Property="Foreground" Value="{StaticResource PrimaryTextBrush}" />
             <Setter Property="TextOptions.TextFormattingMode" Value="Display" />
+        </Style>
+        <!-- Keep date tooltips readable over both the dark widget and the desktop behind it. -->
+        <Style TargetType="ToolTip">
+            <Setter Property="Background" Value="#F21A2233" />
+            <Setter Property="Foreground" Value="#F4F7FB" />
+            <Setter Property="BorderBrush" Value="#708AB5D6" />
+            <Setter Property="BorderThickness" Value="1" />
+            <Setter Property="Padding" Value="9,6" />
+            <Setter Property="FontFamily" Value="Segoe UI" />
+            <Setter Property="FontSize" Value="12" />
+            <Setter Property="HasDropShadow" Value="True" />
+            <Setter Property="Template">
+                <Setter.Value>
+                    <ControlTemplate TargetType="ToolTip">
+                        <Border Background="{TemplateBinding Background}"
+                                BorderBrush="{TemplateBinding BorderBrush}"
+                                BorderThickness="{TemplateBinding BorderThickness}"
+                                CornerRadius="6"
+                                Padding="{TemplateBinding Padding}">
+                            <ContentPresenter Content="{TemplateBinding Content}"
+                                              ContentTemplate="{TemplateBinding ContentTemplate}"
+                                              RecognizesAccessKey="True"
+                                              TextElement.Foreground="{TemplateBinding Foreground}"
+                                              TextElement.FontFamily="{TemplateBinding FontFamily}"
+                                              TextElement.FontSize="{TemplateBinding FontSize}" />
+                        </Border>
+                    </ControlTemplate>
+                </Setter.Value>
+            </Setter>
         </Style>
         <Style TargetType="ContextMenu">
             <Setter Property="Background" Value="#252526" />

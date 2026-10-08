@@ -234,7 +234,7 @@ try {
             throw "Icon control is too close to the window edge: $($bounds.Left),$($bounds.Top),$($bounds.Right),$($bounds.Bottom)"
         }
     }
-    foreach ($controlId in @('PinButton', 'MinimizeButton', 'MaximizeButton', 'CloseButton')) {
+    foreach ($controlId in @('SnapButton', 'PinButton', 'MinimizeButton', 'MaximizeButton', 'CloseButton')) {
         $control = $window.FindFirst([System.Windows.Automation.TreeScope]::Descendants,
             [System.Windows.Automation.PropertyCondition]::new([System.Windows.Automation.AutomationElement]::AutomationIdProperty, $controlId))
         if ($null -eq $control) { throw "Title control missing: $controlId" }
@@ -341,6 +341,18 @@ try {
     Invoke-NavigationElement -Element $pin
     Start-Sleep -Milliseconds 200
     if (([UiScreenshotNative]::GetWindowLongPtr([IntPtr]$window.Current.NativeWindowHandle, -20).ToInt64() -band 0x8) -eq 0) { throw 'Pin failed' }
+    $snap = $window.FindFirst([System.Windows.Automation.TreeScope]::Descendants,
+        [System.Windows.Automation.PropertyCondition]::new([System.Windows.Automation.AutomationElement]::AutomationIdProperty, 'SnapButton'))
+    Invoke-NavigationElement -Element $snap
+    Start-Sleep -Milliseconds 250
+    $snappedBounds = $window.Current.BoundingRectangle
+    $snapWorkArea = [System.Windows.Forms.Screen]::FromHandle([IntPtr]$window.Current.NativeWindowHandle).WorkingArea
+    $snapGap = @(
+        [Math]::Abs($snappedBounds.Left - ($snapWorkArea.Left + 2)),
+        [Math]::Abs($snappedBounds.Right - ($snapWorkArea.Right - 2)),
+        [Math]::Abs($snappedBounds.Top - ($snapWorkArea.Top + 2)),
+        [Math]::Abs($snappedBounds.Bottom - ($snapWorkArea.Bottom - 2)))
+    if (($snapGap | Where-Object { $_ -le 3 }).Count -lt 2) { throw "Snap-to-corner did not use a 2px work-area gap: $snappedBounds vs $snapWorkArea" }
     $maximize = $window.FindFirst([System.Windows.Automation.TreeScope]::Descendants,
         [System.Windows.Automation.PropertyCondition]::new([System.Windows.Automation.AutomationElement]::AutomationIdProperty, 'MaximizeButton'))
     $windowPattern = $window.GetCurrentPattern([System.Windows.Automation.WindowPattern]::Pattern)

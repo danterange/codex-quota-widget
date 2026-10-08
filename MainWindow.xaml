@@ -23,6 +23,7 @@
                     <TextBlock Text="{Binding PlanName}" Foreground="{StaticResource AccentBrush}" FontSize="11" Margin="7,0,0,0" VerticalAlignment="Center" />
                 </StackPanel>
                 <StackPanel Grid.Column="1" Orientation="Horizontal" VerticalAlignment="Center" shell:WindowChrome.IsHitTestVisibleInChrome="True">
+                    <Button x:Name="SnapButton" AutomationProperties.AutomationId="SnapButton" Style="{StaticResource GlassButton}" ToolTip="{Binding Text.SnapToCorner}" AutomationProperties.Name="{Binding Text.SnapToCorner}" Click="SnapClicked"><Path Style="{StaticResource LineIcon}" Data="M4,9 V4 H9 M15,4 H20 V9 M20,15 V20 H15 M9,20 H4 V15" /></Button>
                     <Button x:Name="PinButton" AutomationProperties.AutomationId="PinButton" ToolTip="{Binding Text.PinWindow}" AutomationProperties.Name="{Binding Text.PinWindow}" Click="PinClicked">
                         <Button.Style><Style TargetType="Button" BasedOn="{StaticResource GlassButton}">
                             <Style.Triggers><DataTrigger Binding="{Binding Topmost, ElementName=WidgetWindow}" Value="True"><Setter Property="Background" Value="#254D9FFF" /><Setter Property="Foreground" Value="{StaticResource AccentBrush}" /></DataTrigger></Style.Triggers>
