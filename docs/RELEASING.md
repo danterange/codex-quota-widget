@@ -10,21 +10,21 @@
 
 ## 维护者：以后如何发版
 
-1. 修改代码，把 `CodexQuotaWidget.csproj` 的 `<Version>` 改为例如 `0.1.1`。
-2. 可添加 `docs/releases/v0.1.1.md`，写中文更新说明。没有此文件时使用 GitHub 自动生成的说明。
-3. 测试后提交并推送代码，再创建同名版本标签：
+完整自动流程以 [AGENTS.md](../AGENTS.md) 和 [发布新版本.md](发布新版本.md) 为准。向代理明确要求“按 AGENTS.md 执行”，会依次审查、测试、自动提交本次改动并推送，再通过唯一脚本递增版本并打标签。
+
+1. 审查并验证本次代码、UI 与测试，写好下一版本的 `docs/releases/vX.Y.Z.md`。
+2. 只提交本次范围内的明确文件并推送；不混入无关修改。
+3. 确认工作区干净后执行（不要提前手改版本或另打标签）：
 
 ```powershell
-git add .
-git commit -m "准备发布 v0.1.1"
-git push origin main
-git tag -a v0.1.1 -m "发布 v0.1.1"
-git push origin v0.1.1
+$env:RELEASE_NONINTERACTIVE = '1'
+& '.\Publish-Next-Release.bat'
+if ($LASTEXITCODE -ne 0) { throw '先检查版本提交与标签现场，不直接重跑' }
 ```
 
 到仓库 [Actions](https://github.com/danterange/codex-quota-widget/actions/workflows/release.yml) 查看结果。普通代码推送不会发布；`v*` 标签推送会自动完成回归检查、打包、安装启动测试和 Release 发布。标签必须与项目 Version 完全一致，否则流程失败。
 
-流水线先创建草稿并上传完整附件，最后发布；失败可在 Actions 重跑。已经公开的 Release 不覆盖，修复应发布新版本。版本带 `-beta.1` 等后缀时自动标记为预发布；普通 `0.1.0` 作为当前 Latest，但不意味着达到 1.0 稳定程度。
+流水线先创建草稿并上传完整附件，最后发布；失败应检查目标版本状态后仅续跑缺失步骤。已经公开的 Release 不覆盖，修复应发布新版本。完成后下载安装包和 ZIP，按 SHA256SUMS.txt 回验。版本脚本采用三段十进制进位，不处理预发布版本；工作流仍兼容已有的预发布标签。
 
 不需要个人访问令牌或手工配置 Secrets，发布任务使用仓库自动提供的 GITHUB_TOKEN。工作流权限已限制为构建只读、发布写入。
 

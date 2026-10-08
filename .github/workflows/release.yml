@@ -38,6 +38,11 @@ jobs:
         run: |
           dotnet run --project tests/QuotaChecks/QuotaChecks.csproj -c Release
           if ($LASTEXITCODE -ne 0) { throw 'Regression checks failed' }
+      - name: English window and close behavior checks
+        shell: pwsh
+        run: |
+          dotnet run --project tests/QuotaChecks/QuotaChecks.csproj -c Release --no-build -- --window-shell --demo
+          if ($LASTEXITCODE -ne 0) { throw 'Window shell checks failed' }
       - name: Build installer and portable ZIP
         shell: pwsh
         run: ./scripts/Build-Release.ps1
