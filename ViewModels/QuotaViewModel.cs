@@ -60,6 +60,11 @@ public sealed class QuotaViewModel : INotifyPropertyChanged, IDisposable
     public string ResetCreditsText => snapshot?.ResetCredits is { } count ? count.ToString() : "--";
     public string ResetCreditsDisplayText => $"{Text.ResetCredits}: {ResetCreditsText}";
     public string ErrorText => errorDetail;
+    public bool CanRefresh => !refreshing && !disposed;
+    public string ConnectionText => errorMessage is not null ? (language == AppLanguage.English ? "Offline" : "连接异常")
+        : refreshing ? (language == AppLanguage.English ? "Updating" : "更新中") : Text.LiveStatus;
+    public System.Windows.Media.Brush StatusBrush => errorMessage is not null ? System.Windows.Media.Brushes.Salmon
+        : refreshing ? System.Windows.Media.Brushes.LightSkyBlue : System.Windows.Media.Brushes.Turquoise;
     public int RefreshIntervalSeconds { get; private set; }
     public string StatusText => errorMessage is not null
         ? LocalizeErrorDetail(errorDetail) + (snapshot is null ? "" : language == AppLanguage.English ? " The last successful quota remains visible." : " 当前额度保留上次成功结果。")
@@ -96,6 +101,7 @@ public sealed class QuotaViewModel : INotifyPropertyChanged, IDisposable
             OnPropertyChanged(nameof(FiveHourResetText));
             OnPropertyChanged(nameof(SevenDayResetText));
             OnPropertyChanged(nameof(ResetCreditsDisplayText));
+            OnPropertyChanged(nameof(ConnectionText));
         }
 
         OnPropertyChanged(nameof(MembershipText));
@@ -143,6 +149,9 @@ public sealed class QuotaViewModel : INotifyPropertyChanged, IDisposable
 
         refreshing = true;
         OnPropertyChanged(nameof(StatusText));
+        OnPropertyChanged(nameof(CanRefresh));
+        OnPropertyChanged(nameof(ConnectionText));
+        OnPropertyChanged(nameof(StatusBrush));
         try
         {
             try

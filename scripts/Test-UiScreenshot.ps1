@@ -14,6 +14,7 @@ if ([string]::IsNullOrWhiteSpace($ProjectRoot)) {
 Add-Type -AssemblyName UIAutomationClient
 Add-Type -AssemblyName UIAutomationTypes
 Add-Type -AssemblyName System.Drawing
+Add-Type -AssemblyName System.Windows.Forms
 Add-Type -TypeDefinition @'
 using System;
 using System.Runtime.InteropServices;
@@ -35,10 +36,12 @@ public static class UiScreenshotNative {
 }
 '@
 
+# Capture the target window only; desktop capture includes the actual DWM material.
 function Save-WindowScreenshot {
     param(
         [Parameter(Mandatory = $true)] [System.Windows.Automation.AutomationElement]$Window,
-        [Parameter(Mandatory = $true)] [string]$Path
+        [Parameter(Mandatory = $true)] [string]$Path,
+        [switch]$Desktop
     )
 
     $bounds = $Window.Current.BoundingRectangle
@@ -47,7 +50,7 @@ function Save-WindowScreenshot {
         [int]$bounds.Top,
         [int]$bounds.Width,
         [int]$bounds.Height)
-    if ($rectangle.Width -lt 330 -or $rectangle.Width -gt 720 -or $rectangle.Height -lt 220 -or $rectangle.Height -gt 560) {
+    if ($rectangle.Width -lt 300 -or $rectangle.Width -gt 1000 -or $rectangle.Height -lt 140 -or $rectangle.Height -gt 700) {
         throw "Unexpected adaptive widget size: $($rectangle.Width)x$($rectangle.Height)"
     }
 
@@ -55,6 +58,9 @@ function Save-WindowScreenshot {
     try {
         $graphics = [System.Drawing.Graphics]::FromImage($bitmap)
         try {
+            if ($Desktop) {
+                $graphics.CopyFromScreen($rectangle.Location, [System.Drawing.Point]::Empty, $rectangle.Size)
+            } else {
             $deviceContext = $graphics.GetHdc()
             try {
                 if (-not [UiScreenshotNative]::PrintWindow(
@@ -66,6 +72,7 @@ function Save-WindowScreenshot {
             }
             finally {
                 $graphics.ReleaseHdc($deviceContext)
+            }
             }
         }
         finally {
@@ -227,10 +234,15 @@ try {
             throw "Icon control is too close to the window edge: $($bounds.Left),$($bounds.Top),$($bounds.Right),$($bounds.Bottom)"
         }
     }
-    if ($dashboardNames -contains '关闭窗口' -or $dashboardNames -contains 'Close window') {
-        throw 'The custom close button should not be present.'
+    foreach ($controlId in @('PinButton', 'MinimizeButton', 'MaximizeButton', 'CloseButton')) {
+        $control = $window.FindFirst([System.Windows.Automation.TreeScope]::Descendants,
+            [System.Windows.Automation.PropertyCondition]::new([System.Windows.Automation.AutomationElement]::AutomationIdProperty, $controlId))
+        if ($null -eq $control) { throw "Title control missing: $controlId" }
+        $bounds = $control.Current.BoundingRectangle
+        if ($bounds.Width -lt 24 -or $bounds.Left -lt $windowBounds.Left -or $bounds.Right -gt $windowBounds.Right) { throw "Title control clipped: $controlId" }
     }
     Save-WindowScreenshot -Window $window -Path (Join-Path $output 'dashboard-printwindow.png')
+    Save-WindowScreenshot -Window $window -Path (Join-Path $output 'desktop-glass.png') -Desktop
 
     Invoke-NavigationElement -Element @($settingsRail)[0]
     $refreshIntervalLabel = if ($dashboardLabel -eq 'Dashboard') { 'Refresh interval' } else { '刷新间隔' }
@@ -283,6 +295,11 @@ try {
     if (-not $transformPattern.Current.CanResize) {
         throw 'Widget window does not expose free resize support.'
     }
+    # Start away from the screen edge so native resize is not constrained by
+    # the bottom-right startup position and every captured pixel is on-screen.
+    $captureArea = [System.Windows.Forms.Screen]::FromHandle([IntPtr]$window.Current.NativeWindowHandle).WorkingArea
+    $transformPattern.Move($captureArea.Left + 32, $captureArea.Top + 32)
+    Start-Sleep -Milliseconds 350
     $beforeResize = $window.Current.BoundingRectangle
     $transformPattern.Resize($beforeResize.Width + 32, $beforeResize.Height + 20)
     Start-Sleep -Milliseconds 300
@@ -291,14 +308,55 @@ try {
         throw "Window resize did not apply: $([int]$beforeResize.Width)x$([int]$beforeResize.Height) -> $([int]$afterResize.Width)x$([int]$afterResize.Height)"
     }
     $transformPattern.Resize($beforeResize.Width, $beforeResize.Height)
-    $transformPattern.Resize([Math]::Max(420, $beforeResize.Width - 32), [Math]::Max(270, $beforeResize.Height - 20))
+    $transformPattern.Resize(320, 280)
     Start-Sleep -Milliseconds 300
     $minimumResize = $window.Current.BoundingRectangle
-    if ($minimumResize.Width -lt 420 -or $minimumResize.Height -lt 270) {
+    if ($minimumResize.Width -lt 320 -or $minimumResize.Height -lt 160) {
         throw "Window minimum resize clipped below the adaptive floor: $([int]$minimumResize.Width)x$([int]$minimumResize.Height)"
     }
+    Save-WindowScreenshot -Window $window -Path (Join-Path $output 'narrow.png')
+    $transformPattern.Resize(600, 360)
+    # UIA resize returns before WPF paints; wait before capturing the new client area.
+    Start-Sleep -Milliseconds 350
+    $wideBounds = $window.Current.BoundingRectangle
+    if ([Math]::Abs($wideBounds.Width - 600) -gt 2 -or [Math]::Abs($wideBounds.Height - 360) -gt 2) { throw 'Wide resize did not settle' }
+    Save-WindowScreenshot -Window $window -Path (Join-Path $output 'wide.png')
     $transformPattern.Resize($beforeResize.Width, $beforeResize.Height)
-    Write-Output '[OK] UI Automation verified adaptive dashboard and compact settings layout.'
+    # Exercise real title buttons and inspect OS state, not only their labels.
+    $pin = $window.FindFirst([System.Windows.Automation.TreeScope]::Descendants,
+        [System.Windows.Automation.PropertyCondition]::new([System.Windows.Automation.AutomationElement]::AutomationIdProperty, 'PinButton'))
+    Invoke-NavigationElement -Element $pin
+    Start-Sleep -Milliseconds 200
+    if (([UiScreenshotNative]::GetWindowLongPtr([IntPtr]$window.Current.NativeWindowHandle, -20).ToInt64() -band 0x8) -ne 0) { throw 'Unpin failed' }
+    Invoke-NavigationElement -Element $pin
+    Start-Sleep -Milliseconds 200
+    if (([UiScreenshotNative]::GetWindowLongPtr([IntPtr]$window.Current.NativeWindowHandle, -20).ToInt64() -band 0x8) -eq 0) { throw 'Pin failed' }
+    $maximize = $window.FindFirst([System.Windows.Automation.TreeScope]::Descendants,
+        [System.Windows.Automation.PropertyCondition]::new([System.Windows.Automation.AutomationElement]::AutomationIdProperty, 'MaximizeButton'))
+    $windowPattern = $window.GetCurrentPattern([System.Windows.Automation.WindowPattern]::Pattern)
+    Invoke-NavigationElement -Element $maximize
+    Start-Sleep -Milliseconds 350
+    if ($windowPattern.Current.WindowVisualState -ne [System.Windows.Automation.WindowVisualState]::Maximized) { throw 'Maximize failed' }
+    $maxBounds = $window.Current.BoundingRectangle
+    $workArea = [System.Windows.Forms.Screen]::FromHandle([IntPtr]$window.Current.NativeWindowHandle).WorkingArea
+    if ($maxBounds.Bottom -gt $workArea.Bottom + 2 -or $maxBounds.Right -gt $workArea.Right + 2) { throw "Maximized window overlaps work area: $maxBounds vs $workArea" }
+    Invoke-NavigationElement -Element $maximize
+    Start-Sleep -Milliseconds 350
+    if ($windowPattern.Current.WindowVisualState -ne [System.Windows.Automation.WindowVisualState]::Normal) { throw 'Restore failed' }
+    $restoredBounds = $window.Current.BoundingRectangle
+    if ([Math]::Abs($restoredBounds.Width - $beforeResize.Width) -gt 2 -or [Math]::Abs($restoredBounds.Height - $beforeResize.Height) -gt 2) { throw 'Restore lost the original window size' }
+    $minimize = $window.FindFirst([System.Windows.Automation.TreeScope]::Descendants,
+        [System.Windows.Automation.PropertyCondition]::new([System.Windows.Automation.AutomationElement]::AutomationIdProperty, 'MinimizeButton'))
+    Invoke-NavigationElement -Element $minimize
+    Start-Sleep -Milliseconds 350
+    if ($windowPattern.Current.WindowVisualState -ne [System.Windows.Automation.WindowVisualState]::Minimized) { throw 'Minimize failed' }
+    $windowPattern.SetWindowVisualState([System.Windows.Automation.WindowVisualState]::Normal)
+    Start-Sleep -Milliseconds 350
+    $close = $window.FindFirst([System.Windows.Automation.TreeScope]::Descendants,
+        [System.Windows.Automation.PropertyCondition]::new([System.Windows.Automation.AutomationElement]::AutomationIdProperty, 'CloseButton'))
+    Invoke-NavigationElement -Element $close
+    if (-not $process.WaitForExit(5000)) { throw 'Close button failed in exit-on-close mode' }
+    Write-Output '[OK] Layout, narrow/wide resize, pin/unpin, maximize/restore, minimize/restore and close passed.'
 }
 finally {
     if ($null -ne $window -and -not $process.HasExited) {

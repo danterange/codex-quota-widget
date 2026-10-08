@@ -100,7 +100,7 @@ public partial class MainWindow : Window
     /// <summary>面板切换后在下一帧重新测量内容，保留自由缩放并避免导航时出现大块空白。</summary>
     private void RequestContentFit()
     {
-        if (!autoSizingLocked || userResized || !IsLoaded)
+        if (!autoSizingLocked || userResized || !IsLoaded || WindowState != WindowState.Normal)
         {
             return;
         }
@@ -111,7 +111,7 @@ public partial class MainWindow : Window
     /// <summary>临时恢复 SizeToContent 读取当前面板尺寸，再锁回手动模式。</summary>
     private void RecalculateContentSize()
     {
-        if (!autoSizingLocked || userResized || !IsLoaded)
+        if (!autoSizingLocked || userResized || !IsLoaded || WindowState != WindowState.Normal)
         {
             return;
         }
@@ -119,9 +119,8 @@ public partial class MainWindow : Window
         suppressUserResizeTracking = true;
         try
         {
-            Width = double.NaN;
             Height = double.NaN;
-            SizeToContent = SizeToContent.WidthAndHeight;
+            SizeToContent = SizeToContent.Height;
             UpdateLayout();
             var fittedWidth = ActualWidth;
             var fittedHeight = ActualHeight;
@@ -136,13 +135,50 @@ public partial class MainWindow : Window
         }
     }
 
-    /// <summary>允许无系统标题栏窗口通过深色自绘标题区域移动，避免恢复系统白色标题栏。</summary>
-    private void WindowHeaderMouseLeftButtonDown(object sender, MouseButtonEventArgs e)
+    /// <summary>原生句柄就绪后开启背景模糊；不支持的系统使用不透明渐变，保证文字可读。</summary>
+    private void WindowSourceInitialized(object? sender, EventArgs e)
     {
-        if (e.ChangedButton == MouseButton.Left)
-        {
-            DragMove();
-        }
+        WindowWorkArea.Attach(new System.Windows.Interop.WindowInteropHelper(this).Handle);
+        var forceOpaque = Environment.GetCommandLineArgs().Contains("--opaque");
+        GlassSurface.Background = (System.Windows.Media.Brush)FindResource(!forceOpaque && WindowBackdrop.TryEnable(this) ? "GlassBrush" : "OpaqueGlassBrush");
+    }
+
+    /// <summary>切换当前会话置顶状态；高亮按钮与实际 Topmost 属性绑定，避免状态不一致。</summary>
+    private void PinClicked(object sender, RoutedEventArgs e)
+    {
+        Topmost = !Topmost;
+    }
+
+    /// <summary>先锁定当前尺寸再最小化，避免启动异步读取在后台改写还原尺寸。</summary>
+    private void MinimizeClicked(object sender, RoutedEventArgs e)
+    {
+        FinalizeAutoSizing();
+        SystemCommands.MinimizeWindow(this);
+    }
+
+    /// <summary>切换最大化和还原；WindowChrome 保留原生工作区边界与还原矩形。</summary>
+    private void MaximizeClicked(object sender, RoutedEventArgs e)
+    {
+        FinalizeAutoSizing();
+        if (WindowState == WindowState.Maximized) SystemCommands.RestoreWindow(this);
+        else SystemCommands.MaximizeWindow(this);
+    }
+
+    /// <summary>关闭主窗口到托盘，继续额度刷新；完全退出仍由托盘的退出命令负责。</summary>
+    private void CloseClicked(object sender, RoutedEventArgs e)
+    {
+        Close();
+    }
+
+    /// <summary>同步最大化按钮图形和可访问名称；最大化/最小化不能触发自动尺寸回算。</summary>
+    private void WindowStateChanged(object? sender, EventArgs e)
+    {
+        if (MaximizeGlyph is null || viewModel is null) return;
+        var maximized = WindowState == WindowState.Maximized;
+        MaximizeGlyph.Data = Geometry.Parse(maximized ? "M8,5 H19 V16 M5,8 H16 V19 H5 Z" : "M5,5 H19 V19 H5 Z");
+        var label = maximized ? viewModel.Text.RestoreWindow : viewModel.Text.MaximizeWindow;
+        MaximizeButton.ToolTip = label;
+        System.Windows.Automation.AutomationProperties.SetName(MaximizeButton, label);
     }
 
     /// <summary>保存选定的刷新间隔，并让正在运行的 DispatcherTimer 不重启窗口即可生效。</summary>
@@ -169,6 +205,7 @@ public partial class MainWindow : Window
 
         settings = settings with { Language = language };
         PersistSettings();
+        WindowStateChanged(this, EventArgs.Empty);
     }
 
     /// <summary>将已保存设置同步回控件，避免语言切换或启动状态更新时触发递归保存。</summary>
@@ -207,8 +244,8 @@ public partial class MainWindow : Window
     private void MainWindowLoaded(object sender, RoutedEventArgs e)
     {
         var workArea = SystemParameters.WorkArea;
-        Left = workArea.Right - Width - 12;
-        Top = workArea.Bottom - Height - 12;
+        Left = workArea.Right - ActualWidth - 12;
+        Top = workArea.Bottom - ActualHeight - 12;
 
         if (startOnSettings)
         {
@@ -313,7 +350,7 @@ public partial class MainWindow : Window
     /// <summary>保存当前内容测量结果并关闭 SizeToContent，确保后续 ResizeMode=CanResize 真正生效。</summary>
     private void FinalizeAutoSizing()
     {
-        if (autoSizingLocked || !IsLoaded)
+        if (autoSizingLocked || !IsLoaded || WindowState != WindowState.Normal)
         {
             return;
         }

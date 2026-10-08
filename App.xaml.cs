@@ -95,6 +95,8 @@ public partial class App : System.Windows.Application
             window.Show();
         }
 
+        if (window.WindowState == WindowState.Minimized)
+            window.WindowState = WindowState.Normal;
         window.Activate();
     }
 

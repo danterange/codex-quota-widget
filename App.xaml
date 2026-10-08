@@ -3,13 +3,57 @@
              xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
              ShutdownMode="OnExplicitShutdown">
     <Application.Resources>
+        <SolidColorBrush x:Key="LineBrush" Color="#24CEDFFF" />
+        <LinearGradientBrush x:Key="GlassBrush" StartPoint="0,0" EndPoint="1,1">
+            <GradientStop Color="#901E3149" Offset="0" /><GradientStop Color="#A0171D2D" Offset="0.55" /><GradientStop Color="#932E2648" Offset="1" />
+        </LinearGradientBrush>
+        <LinearGradientBrush x:Key="OpaqueGlassBrush" StartPoint="0,0" EndPoint="1,1">
+            <GradientStop Color="#1E3149" Offset="0" /><GradientStop Color="#171D2D" Offset="0.55" /><GradientStop Color="#2E2648" Offset="1" />
+        </LinearGradientBrush>
+        <LinearGradientBrush x:Key="HourlyGradient" StartPoint="0,0" EndPoint="1,0"><GradientStop Color="#579CFA" /><GradientStop Color="#82E1DD" Offset="1" /></LinearGradientBrush>
+        <LinearGradientBrush x:Key="WeeklyGradient" StartPoint="0,0" EndPoint="1,0"><GradientStop Color="#947FF0" /><GradientStop Color="#DEB7FC" Offset="1" /></LinearGradientBrush>
+        <Style x:Key="LineIcon" TargetType="Path">
+            <Setter Property="Width" Value="12" /><Setter Property="Height" Value="12" /><Setter Property="Stretch" Value="Uniform" />
+            <Setter Property="StrokeThickness" Value="1.5" /><Setter Property="StrokeStartLineCap" Value="Round" /><Setter Property="StrokeEndLineCap" Value="Round" /><Setter Property="StrokeLineJoin" Value="Round" />
+            <Setter Property="Stroke" Value="{Binding Foreground, RelativeSource={RelativeSource AncestorType=Control}}" />
+        </Style>
+        <Style x:Key="GlassButton" TargetType="Button">
+            <Setter Property="Width" Value="28" /><Setter Property="Height" Value="28" />
+            <Setter Property="Background" Value="Transparent" /><Setter Property="BorderBrush" Value="Transparent" /><Setter Property="Foreground" Value="#BAC7DB" />
+            <Setter Property="Template"><Setter.Value><ControlTemplate TargetType="Button"><Border Background="{TemplateBinding Background}" BorderBrush="{TemplateBinding BorderBrush}" BorderThickness="1" CornerRadius="6"><ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center" /></Border></ControlTemplate></Setter.Value></Setter>
+            <Style.Triggers>
+                <Trigger Property="IsMouseOver" Value="True"><Setter Property="Background" Value="#24FFFFFF" /><Setter Property="Foreground" Value="White" /></Trigger>
+                <Trigger Property="IsPressed" Value="True"><Setter Property="Background" Value="#3DFFFFFF" /></Trigger>
+                <Trigger Property="IsKeyboardFocused" Value="True"><Setter Property="BorderBrush" Value="#8ABFFF" /></Trigger>
+                <Trigger Property="IsEnabled" Value="False"><Setter Property="Opacity" Value="0.45" /></Trigger>
+            </Style.Triggers>
+        </Style>
+        <Style x:Key="GlassCloseButton" TargetType="Button" BasedOn="{StaticResource GlassButton}">
+            <Style.Triggers><Trigger Property="IsMouseOver" Value="True"><Setter Property="Background" Value="#BC334D" /></Trigger></Style.Triggers>
+        </Style>
+        <Style x:Key="GlassTab" TargetType="RadioButton">
+            <Setter Property="Width" Value="28" /><Setter Property="Height" Value="28" />
+            <Setter Property="Foreground" Value="#BAC7DB" /><Setter Property="Background" Value="Transparent" /><Setter Property="BorderBrush" Value="Transparent" />
+            <Setter Property="Template"><Setter.Value><ControlTemplate TargetType="RadioButton"><Border Background="{TemplateBinding Background}" BorderBrush="{TemplateBinding BorderBrush}" BorderThickness="1" CornerRadius="6"><ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center" /></Border></ControlTemplate></Setter.Value></Setter>
+            <Style.Triggers>
+                <Trigger Property="IsChecked" Value="True"><Setter Property="Background" Value="#254D9FFF" /><Setter Property="Foreground" Value="#8ABFFF" /></Trigger>
+                <Trigger Property="IsMouseOver" Value="True"><Setter Property="Background" Value="#24FFFFFF" /></Trigger>
+                <Trigger Property="IsKeyboardFocused" Value="True"><Setter Property="BorderBrush" Value="#8ABFFF" /></Trigger>
+            </Style.Triggers>
+        </Style>
+        <Style x:Key="QuotaProgress" TargetType="ProgressBar">
+            <Setter Property="Height" Value="4" /><Setter Property="Background" Value="#24FFFFFF" />
+            <Setter Property="Template"><Setter.Value><ControlTemplate TargetType="ProgressBar">
+                <Grid x:Name="PART_Track"><Border Background="{TemplateBinding Background}" CornerRadius="2" /><Border x:Name="PART_Indicator" HorizontalAlignment="Left" Background="{TemplateBinding Foreground}" CornerRadius="2" /></Grid>
+            </ControlTemplate></Setter.Value></Setter>
+        </Style>
         <SolidColorBrush x:Key="PanelBrush" Color="#111318" />
         <SolidColorBrush x:Key="PanelBorderBrush" Color="#2B303B" />
         <SolidColorBrush x:Key="SurfaceBrush" Color="#171A21" />
         <SolidColorBrush x:Key="CardBrush" Color="#1D212A" />
         <SolidColorBrush x:Key="CardBorderBrush" Color="#2A303B" />
         <SolidColorBrush x:Key="PrimaryTextBrush" Color="#F4F7FB" />
-        <SolidColorBrush x:Key="SecondaryTextBrush" Color="#A9B2C1" />
+        <SolidColorBrush x:Key="SecondaryTextBrush" Color="#BAC7DB" />
         <SolidColorBrush x:Key="MutedTextBrush" Color="#727C8D" />
         <SolidColorBrush x:Key="AccentBrush" Color="#5BA7FF" />
         <SolidColorBrush x:Key="AccentHoverBrush" Color="#78B8FF" />

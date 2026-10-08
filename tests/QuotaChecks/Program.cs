@@ -20,6 +20,12 @@ internal static class Program
         }
         try
         {
+            if (args.Contains("--window-shell"))
+            {
+                if (!args.Contains("--demo")) throw new ArgumentException("Window shell checks require --demo.");
+                CheckWindowShell();
+                return 0;
+            }
             if (args.Contains("--live"))
             {
                 // 模拟 Explorer 的普通启动环境，不能借用 Codex 代理进程注入的路径。
@@ -45,9 +51,59 @@ internal static class Program
         }
         catch (Exception exception)
         {
+            if (args.Contains("--window-shell")) Console.Error.WriteLine(exception.StackTrace);
             Console.Error.WriteLine($"FAILED: {exception.GetType().Name}: {exception.Message}");
             return 1;
         }
+    }
+
+    /// <summary>使用隔离窗口验证英文布局与关闭隐藏，不创建托盘、不写入用户设置。</summary>
+    private static void CheckWindowShell()
+    {
+        var app = new System.Windows.Application { ShutdownMode = ShutdownMode.OnExplicitShutdown };
+        var document = System.Xml.Linq.XDocument.Load(Path.Combine(Directory.GetCurrentDirectory(), "App.xaml"));
+        System.Xml.Linq.XNamespace presentation = "http://schemas.microsoft.com/winfx/2006/xaml/presentation";
+        var dictionary = new System.Xml.Linq.XElement(presentation + "ResourceDictionary",
+            new System.Xml.Linq.XAttribute(System.Xml.Linq.XNamespace.Xmlns + "x", "http://schemas.microsoft.com/winfx/2006/xaml"),
+            document.Root!.Element(presentation + "Application.Resources")!.Elements());
+        app.Resources = (ResourceDictionary)System.Windows.Markup.XamlReader.Parse(dictionary.ToString());
+        var window = new CodexQuotaWidget.MainWindow(new WidgetSettings(Language: AppLanguage.English), _ => { });
+        try
+        {
+            window.Show();
+            window.Dispatcher.Invoke(() => { }, DispatcherPriority.ApplicationIdle);
+            window.UpdateLayout();
+            Check(window.ActualWidth == 350 && window.ActualHeight <= 280, "英文主界面保持紧凑尺寸");
+            var output = Path.Combine(Directory.GetCurrentDirectory(), "artifacts", "ui-test");
+            Directory.CreateDirectory(output);
+            SaveWindowRender(window, Path.Combine(output, "english-dashboard.png"));
+            var settings = (System.Windows.Controls.RadioButton)window.FindName("SettingsRailButton");
+            settings.IsChecked = true;
+            window.Dispatcher.Invoke(() => { }, DispatcherPriority.ApplicationIdle);
+            window.UpdateLayout();
+            SaveWindowRender(window, Path.Combine(output, "english-settings.png"));
+            window.Close();
+            Check(!window.IsVisible && !window.Dispatcher.HasShutdownStarted, "正常关闭仅隐藏主窗口");
+            window.Show();
+            Check(window.IsVisible, "隐藏后同一窗口可以恢复");
+            Console.WriteLine("WINDOW SHELL CHECKS PASSED");
+        }
+        finally
+        {
+            window.RequestApplicationExit();
+            app.Shutdown();
+        }
+    }
+
+    /// <summary>保存隔离窗口的真实 WPF 渲染，供人工复核文本换行和控件裁切。</summary>
+    private static void SaveWindowRender(Window window, string path)
+    {
+        var bitmap = new System.Windows.Media.Imaging.RenderTargetBitmap((int)Math.Ceiling(window.ActualWidth), (int)Math.Ceiling(window.ActualHeight), 96, 96, System.Windows.Media.PixelFormats.Pbgra32);
+        bitmap.Render(window);
+        var encoder = new System.Windows.Media.Imaging.PngBitmapEncoder();
+        encoder.Frames.Add(System.Windows.Media.Imaging.BitmapFrame.Create(bitmap));
+        using var stream = File.Create(path);
+        encoder.Save(stream);
     }
 
     /// <summary>验证默认偏好、语言持久化和刷新范围校验。</summary>
@@ -170,7 +226,7 @@ internal static class Program
         return Environment.ProcessPath ?? throw new InvalidOperationException("无法定位协议测试子进程。");
     }
 
-    /// <summary>用真实 WPF Dispatcher 验证两次短间隔 Tick、错误恢复及关闭后的停止。</summary>
+    /// <summary>用真实 WPF Dispatcher 验证自动刷新、语言状态通知、错误恢复及关闭后的停止。</summary>
     private static void CheckDispatcher(IQuotaProvider provider, bool live)
     {
         // 验收默认十秒设置在 CheckSettings 中覆盖；离线回归使用短 Tick，真实 app-server 则预留足够时间避免网络读取尚未完成时被下一次 Tick 跳过。
@@ -200,7 +256,17 @@ internal static class Program
                 Check(viewModel.SevenDayVisibility == Visibility.Visible, "真实绑定显示周额度");
                 Check(updates >= 2, "观察到两次自动成功刷新");
                 if (!live) Check(((CountingProvider)provider).Calls == 3, "启动和两次自动刷新恰好三次调用");
+                if (!live)
+                {
+                    // 离线提供器同步完成；真实网络读取可能恰好处于下一次刷新，不能假定它空闲。
+                    var connectionNotified = false;
+                    viewModel.PropertyChanged += (_, change) => connectionNotified |= change.PropertyName == nameof(QuotaViewModel.ConnectionText);
+                    viewModel.ApplySettings(new WidgetSettings(refreshIntervalSeconds, AppLanguage.English));
+                    Check(connectionNotified && viewModel.ConnectionText == viewModel.Text.LiveStatus, "语言切换立即通知连接状态");
+                    Check(viewModel.CanRefresh, "刷新完成后按钮恢复可用");
+                }
                 viewModel.Dispose();
+                Check(!viewModel.CanRefresh, "释放后按钮不再允许刷新");
                 if (!live)
                 {
                     viewModel.RefreshNowAsync().GetAwaiter().GetResult();

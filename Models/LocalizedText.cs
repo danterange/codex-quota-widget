@@ -28,7 +28,12 @@ public sealed record LocalizedText(
     string LoadingMembership,
     string MembershipUnknown,
     string MembershipExpired,
-    string ResetCredits);
+    string ResetCredits,
+    string PinWindow,
+    string MinimizeWindow,
+    string MaximizeWindow,
+    string RestoreWindow,
+    string CloseWindow);
 
 /// <summary>按用户保存的语言返回一组完整界面文本，避免混用中英文控件标题。</summary>
 public static class LocalizedTextProvider
@@ -62,7 +67,12 @@ public static class LocalizedTextProvider
                 "Loading membership expiry…",
                 "Membership expiry unavailable",
                 "Expired",
-                "Reset credits")
+                "Reset credits",
+                "Always on top",
+                "Minimize",
+                "Maximize",
+                "Restore",
+                "Close to tray")
             : new LocalizedText(
                 "Codex 额度",
                 "额度监控",
@@ -88,6 +98,11 @@ public static class LocalizedTextProvider
                 "正在读取会员到期时间…",
                 "会员到期时间未知",
                 "已到期",
-                "重置次数");
+                "重置次数",
+                "置顶",
+                "最小化",
+                "最大化",
+                "还原",
+                "关闭到托盘");
     }
 }
