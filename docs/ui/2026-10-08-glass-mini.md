@@ -19,10 +19,12 @@
 - 深蓝至灰紫的低饱和渐变；原生 Desktop Acrylic 背景模糊，仅背景透明，正文不降低透明度。
 - 标题栏 34 DIP，按钮 28 DIP，线框图标有工具提示及可访问名称；支持 hover、按下、禁用、键盘焦点。
 - 默认置顶；图钉高亮与实际状态绑定。置顶选择仅在当前会话生效。
+- 单次额度读取失败只显示连接中/重试，不立即显示异常；连续两次失败才进入红色异常状态，成功后立即恢复运行中。
 - 标题可拖动、双击最大化；四边可调整大小。最大化按当前屏幕工作区计算，避免覆盖任务栏。
 - 最小化保留任务栏入口；关闭沿用隐藏到托盘的语义，完全退出用托盘“退出”。
-- 主界面 350×222、设置 350×177（本机 100% 缩放，双额度演示数据）；单额度真实账号会更矮。最小尺寸 320×160。
-- 正文日期 12 DIP，额度比例 18 DIP。窄窗口换行/纵向滚动，不使用横向滚动或继续缩小文字。
+- 主界面默认 320 像素宽（本机 100% 缩放，双额度演示数据）；单额度真实账号会更矮。最小宽度 300。
+- 日期完成时间改为日历图标悬浮提示，正文只显示剩余天、小时、分钟；额度比例 17 DIP，窄窗口换行/纵向滚动。
+- 剩余百分比区间按 0–25%、25–50%、50–75%、75–100% 使用绿、紫、黄、红色，应用于卡片边框、标签、百分比和进度条。
 - 导航自动适配高度；用户主动缩放后保留其尺寸，不强制跳回默认。
 - 加载中有文字状态且禁用重复刷新；异常状态保留最后成功额度及诊断提示；不存在的额度卡片隐藏。
 
@@ -53,7 +55,7 @@ powershell.exe -NoLogo -NoProfile -ExecutionPolicy Bypass -File scripts/Test-UiS
 - 正常 Close 隐藏窗口，同一窗口可再次 Show；验收参数下 Close 能结束测试进程。
 - PowerShell 语法/UTF-8 BOM 检查通过；git diff --check 无空白问题。
 
-截图输出在忽略目录 artifacts/ui-test：dashboard.png、settings.png、desktop-glass.png、narrow.png、wide.png、english-dashboard.png、english-settings.png。前两者和英文图为 WPF 渲染，desktop-glass.png 为本机桌面合成截图；演示数据不代表真实账号。
+截图输出在忽略目录 artifacts/ui-test：dashboard.png、settings.png、desktop-glass.png、narrow.png、wide.png、english-dashboard.png、english-settings.png。截图同时检查剩余时间简化、图标悬浮提示、颜色区间和连接状态；演示数据不代表真实账号。
 
 ## 边界与后续验收
 

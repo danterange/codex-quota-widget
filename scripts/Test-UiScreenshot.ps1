@@ -285,9 +285,19 @@ try {
     $dashboardReady = Wait-DescendantByName -Window $window -Name 'Codex' -TimeoutMilliseconds 2500
     if ($null -eq $dashboardReady) { throw 'Dashboard did not become ready after adaptive settings check.' }
     $namesAfterReturn = Get-DescendantNames -Window $window
-    $expiryPattern = '^到期：\d{4}/\d{2}/\d{2} \d{2}:\d{2}:\d{2}\(剩余\d+天\d+小时\d+分\)$|^Expires: \d{4}/\d{2}/\d{2} \d{2}:\d{2}:\d{2} \(\d+d \d+h \d+m left\)$'
+    $expiryPattern = '^剩余\d+天\d+小时\d+分$|^\d+d \d+h \d+m left$|^已到期$|^Expired$'
     if (-not ($namesAfterReturn | Where-Object { $_ -match $expiryPattern })) {
         throw 'Dashboard is missing the full expiry date and countdown format.'
+    }
+    foreach ($tooltipId in @('FiveHourExpiry', 'SevenDayExpiry', 'MembershipExpiry')) {
+        $tooltipControl = $window.FindFirst([System.Windows.Automation.TreeScope]::Descendants,
+            [System.Windows.Automation.PropertyCondition]::new([System.Windows.Automation.AutomationElement]::AutomationIdProperty, $tooltipId))
+        if ($null -eq $tooltipControl -or [string]::IsNullOrWhiteSpace($tooltipControl.Current.HelpText)) {
+            throw "Expiry tooltip missing: $tooltipId"
+        }
+        if ($tooltipControl.Current.HelpText -notmatch '\d{4}/\d{2}/\d{2} \d{2}:\d{2}:\d{2}') {
+            throw "Expiry tooltip lacks complete date: $tooltipId"
+        }
     }
 
     Start-Sleep -Milliseconds 3500

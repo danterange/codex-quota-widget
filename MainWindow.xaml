@@ -3,7 +3,7 @@
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
         xmlns:shell="clr-namespace:System.Windows.Shell;assembly=PresentationFramework"
         x:Name="WidgetWindow" Title="{Binding Text.WindowTitle}" Icon="pack://application:,,,/CodexQuotaWidget;component/assets/app.ico"
-        Width="350" SizeToContent="Height" MinWidth="320" MinHeight="160"
+        Width="320" SizeToContent="Height" MinWidth="300" MinHeight="145"
         Topmost="True" WindowStyle="None" ResizeMode="CanResize" ShowInTaskbar="True"
         Background="Transparent" UseLayoutRounding="True"
         SourceInitialized="WindowSourceInitialized" StateChanged="WindowStateChanged"
@@ -12,8 +12,8 @@
         <shell:WindowChrome CaptionHeight="34" ResizeBorderThickness="5" GlassFrameThickness="-1" CornerRadius="10" UseAeroCaptionButtons="False" />
     </shell:WindowChrome.WindowChrome>
     <Border x:Name="GlassSurface" Background="{StaticResource OpaqueGlassBrush}" BorderBrush="{StaticResource LineBrush}" BorderThickness="1" CornerRadius="10">
-        <Grid Margin="8,0,8,6">
-            <Grid.RowDefinitions><RowDefinition Height="34" /><RowDefinition Height="30" /><RowDefinition Height="*" /></Grid.RowDefinitions>
+        <Grid Margin="7,0,7,5">
+            <Grid.RowDefinitions><RowDefinition Height="32" /><RowDefinition Height="28" /><RowDefinition Height="*" /></Grid.RowDefinitions>
             <!-- Native chrome owns title dragging, double-click maximize and resize hit testing. -->
             <Grid Grid.Row="0">
                 <Grid.ColumnDefinitions><ColumnDefinition Width="*" /><ColumnDefinition Width="Auto" /></Grid.ColumnDefinitions>
@@ -50,24 +50,24 @@
             <ScrollViewer Grid.Row="2" HorizontalScrollBarVisibility="Disabled" VerticalScrollBarVisibility="Auto" Background="Transparent">
                 <Grid>
                     <StackPanel x:Name="DashboardContent">
-                        <Border Padding="9,5" Margin="0,0,0,5" CornerRadius="8" BorderBrush="{StaticResource LineBrush}" BorderThickness="1" Background="#12132337" Visibility="{Binding FiveHourVisibility}">
+                        <Border Padding="7,4" Margin="0,0,0,4" CornerRadius="8" BorderBrush="{Binding FiveHourToneBrush}" BorderThickness="1" Background="#12132337" Visibility="{Binding FiveHourVisibility}">
                             <StackPanel>
-                                <Grid Height="22"><TextBlock Text="5h" Foreground="{StaticResource AccentBrush}" FontWeight="SemiBold" VerticalAlignment="Center" /><TextBlock Text="{Binding FiveHourPercentText}" HorizontalAlignment="Right" FontSize="18" FontWeight="SemiBold" /></Grid>
-                                <ProgressBar Style="{StaticResource QuotaProgress}" Margin="0,2,0,5" Maximum="100" Value="{Binding FiveHourPercent, Mode=OneWay}" Foreground="{StaticResource HourlyGradient}" />
-                                <TextBlock Text="{Binding FiveHourResetText}" FontSize="12" TextWrapping="Wrap" Foreground="{StaticResource SecondaryTextBrush}" ToolTip="{Binding FiveHourResetText}" />
+                                <Grid Height="21"><TextBlock Text="5h" Foreground="{Binding FiveHourToneBrush}" FontWeight="SemiBold" VerticalAlignment="Center" /><TextBlock Text="{Binding FiveHourPercentText}" Foreground="{Binding FiveHourToneBrush}" HorizontalAlignment="Right" FontSize="17" FontWeight="SemiBold" /></Grid>
+                                <ProgressBar Style="{StaticResource QuotaProgress}" Margin="0,2,0,4" Maximum="100" Value="{Binding FiveHourPercent, Mode=OneWay}" Foreground="{Binding FiveHourToneBrush}" />
+                                <Grid ToolTip="{Binding FiveHourResetTooltip}"><Grid.ColumnDefinitions><ColumnDefinition Width="17" /><ColumnDefinition Width="*" /></Grid.ColumnDefinitions><Path Style="{StaticResource LineIcon}" Stroke="{Binding FiveHourToneBrush}" Data="M5,5 H19 V20 H5 Z M8,3 V7 M16,3 V7 M5,10 H19" /><TextBlock Grid.Column="1" Text="{Binding FiveHourResetText}" AutomationProperties.AutomationId="FiveHourExpiry" AutomationProperties.Name="{Binding FiveHourResetText}" AutomationProperties.HelpText="{Binding FiveHourResetTooltip}" FontSize="11" TextWrapping="Wrap" Foreground="{StaticResource SecondaryTextBrush}" /></Grid>
                             </StackPanel>
                         </Border>
-                        <Border Padding="9,5" Margin="0,0,0,5" CornerRadius="8" BorderBrush="{StaticResource LineBrush}" BorderThickness="1" Background="#141E1938" Visibility="{Binding SevenDayVisibility}">
+                        <Border Padding="7,4" Margin="0,0,0,4" CornerRadius="8" BorderBrush="{Binding SevenDayToneBrush}" BorderThickness="1" Background="#141E1938" Visibility="{Binding SevenDayVisibility}">
                             <StackPanel>
-                                <Grid Height="22"><TextBlock Text="7d" Foreground="{StaticResource WeeklyBrush}" FontWeight="SemiBold" VerticalAlignment="Center" /><TextBlock Text="{Binding SevenDayPercentText}" HorizontalAlignment="Right" FontSize="18" FontWeight="SemiBold" /></Grid>
-                                <ProgressBar Style="{StaticResource QuotaProgress}" Margin="0,2,0,5" Maximum="100" Value="{Binding SevenDayPercent, Mode=OneWay}" Foreground="{StaticResource WeeklyGradient}" />
-                                <TextBlock Text="{Binding SevenDayResetText}" FontSize="12" TextWrapping="Wrap" Foreground="{StaticResource SecondaryTextBrush}" ToolTip="{Binding SevenDayResetText}" />
+                                <Grid Height="21"><TextBlock Text="7d" Foreground="{Binding SevenDayToneBrush}" FontWeight="SemiBold" VerticalAlignment="Center" /><TextBlock Text="{Binding SevenDayPercentText}" Foreground="{Binding SevenDayToneBrush}" HorizontalAlignment="Right" FontSize="17" FontWeight="SemiBold" /></Grid>
+                                <ProgressBar Style="{StaticResource QuotaProgress}" Margin="0,2,0,4" Maximum="100" Value="{Binding SevenDayPercent, Mode=OneWay}" Foreground="{Binding SevenDayToneBrush}" />
+                                <Grid ToolTip="{Binding SevenDayResetTooltip}"><Grid.ColumnDefinitions><ColumnDefinition Width="17" /><ColumnDefinition Width="*" /></Grid.ColumnDefinitions><Path Style="{StaticResource LineIcon}" Stroke="{Binding SevenDayToneBrush}" Data="M5,5 H19 V20 H5 Z M8,3 V7 M16,3 V7 M5,10 H19" /><TextBlock Grid.Column="1" Text="{Binding SevenDayResetText}" AutomationProperties.AutomationId="SevenDayExpiry" AutomationProperties.Name="{Binding SevenDayResetText}" AutomationProperties.HelpText="{Binding SevenDayResetTooltip}" FontSize="11" TextWrapping="Wrap" Foreground="{StaticResource SecondaryTextBrush}" /></Grid>
                             </StackPanel>
                         </Border>
                         <Grid Margin="3,3,3,2" ToolTip="{Binding StatusText}">
                             <Grid.ColumnDefinitions><ColumnDefinition Width="20" /><ColumnDefinition Width="*" /></Grid.ColumnDefinitions>
                             <Path Style="{StaticResource LineIcon}" Stroke="{StaticResource SecondaryTextBrush}" Data="M5,5 H19 V20 H5 Z M8,3 V7 M16,3 V7 M5,10 H19" VerticalAlignment="Top" Margin="0,2,4,0" />
-                            <TextBlock Grid.Column="1" Text="{Binding MembershipText}" TextWrapping="Wrap" FontSize="12" Foreground="{StaticResource SecondaryTextBrush}" ToolTip="{Binding MembershipText}" />
+                            <TextBlock Grid.Column="1" Text="{Binding MembershipText}" AutomationProperties.AutomationId="MembershipExpiry" AutomationProperties.HelpText="{Binding MembershipTooltipText}" TextWrapping="Wrap" FontSize="11" Foreground="{StaticResource SecondaryTextBrush}" ToolTip="{Binding MembershipTooltipText}" />
                         </Grid>
                     </StackPanel>
                     <Grid x:Name="SettingsContent" Visibility="Collapsed" Margin="4,6,4,4">

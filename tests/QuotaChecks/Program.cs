@@ -73,7 +73,7 @@ internal static class Program
             window.Show();
             window.Dispatcher.Invoke(() => { }, DispatcherPriority.ApplicationIdle);
             window.UpdateLayout();
-            Check(window.ActualWidth == 350 && window.ActualHeight <= 280, "英文主界面保持紧凑尺寸");
+            Check(window.ActualWidth == 320 && window.ActualHeight <= 280, "英文主界面保持紧凑尺寸");
             var output = Path.Combine(Directory.GetCurrentDirectory(), "artifacts", "ui-test");
             Directory.CreateDirectory(output);
             SaveWindowRender(window, Path.Combine(output, "english-dashboard.png"));
@@ -156,10 +156,13 @@ internal static class Program
         var expectedEnglish = $"Expires: {localExpiry:yyyy/MM/dd HH:mm:ss} ({(int)remaining.TotalDays}d {remaining.Hours}h {remaining.Minutes}m left)";
         Check(QuotaViewModel.FormatMembershipExpiry(expiry, now, AppLanguage.SimplifiedChinese)
             == expectedChinese, "中文会员到期格式精确匹配");
+        Check(QuotaViewModel.FormatRemainingCountdown(expiry, now, AppLanguage.SimplifiedChinese)
+            == "剩余0天0小时16分", "中文会员正文只显示剩余时间");
         Check(QuotaViewModel.FormatExpiryCountdown(expiry, now, AppLanguage.SimplifiedChinese)
             == expectedChinese, "中文额度条到期格式精确匹配");
         Check(QuotaViewModel.FormatMembershipExpiry(expiry, now, AppLanguage.English)
             == expectedEnglish, "英文会员到期格式正确");
+        Check(QuotaViewModel.GetQuotaTone(10) == "Green" && QuotaViewModel.GetQuotaTone(25) == "Purple" && QuotaViewModel.GetQuotaTone(50) == "Yellow" && QuotaViewModel.GetQuotaTone(75) == "Red", "额度颜色按25%区间切换");
         Check(LocalizedTextProvider.Get(AppLanguage.English).SettingsTab == "Settings", "英文设置页文本可用");
     }
 
@@ -235,11 +238,13 @@ internal static class Program
         var viewModel = new QuotaViewModel(provider, refreshIntervalSeconds: refreshIntervalSeconds);
         var frame = new DispatcherFrame();
         var updates = 0;
+        var transientErrorWasShown = false;
         Exception? failure = null;
         var started = DateTimeOffset.Now;
         viewModel.PropertyChanged += (_, e) =>
         {
             if (e.PropertyName != string.Empty) return;
+            transientErrorWasShown |= viewModel.ErrorText.Length > 0 && viewModel.ConnectionText == "连接异常";
             if (viewModel.ErrorText.Length == 0)
             {
                 updates++;
@@ -256,6 +261,7 @@ internal static class Program
                 Check(viewModel.SevenDayVisibility == Visibility.Visible, "真实绑定显示周额度");
                 Check(updates >= 2, "观察到两次自动成功刷新");
                 if (!live) Check(((CountingProvider)provider).Calls == 3, "启动和两次自动刷新恰好三次调用");
+                if (!live) Check(!transientErrorWasShown, "单次读取失败不显示连接异常");
                 if (!live)
                 {
                     // 离线提供器同步完成；真实网络读取可能恰好处于下一次刷新，不能假定它空闲。

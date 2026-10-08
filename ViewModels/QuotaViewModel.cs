@@ -24,6 +24,7 @@ public sealed class QuotaViewModel : INotifyPropertyChanged, IDisposable
     private AppLanguage language;
     private bool refreshing;
     private bool disposed;
+    private int consecutiveFailures;
 
     /// <summary>
     /// 初始化真实 Codex 提供器；只有显式传入演示提供器时才使用静态演示数据。
@@ -47,28 +48,45 @@ public sealed class QuotaViewModel : INotifyPropertyChanged, IDisposable
     public double FiveHourPercent => snapshot?.FiveHour?.Percent ?? 0;
     public string FiveHourPercentText => FormatPercent(snapshot?.FiveHour);
     public string FiveHourResetText => FormatRemaining(snapshot?.FiveHour?.ResetAt);
+    public string FiveHourResetTooltip => FormatExpiryTooltip(snapshot?.FiveHour?.ResetAt);
+    public System.Windows.Media.Brush FiveHourToneBrush => GetQuotaToneBrush(snapshot?.FiveHour);
     public double SevenDayPercent => snapshot?.SevenDay?.Percent ?? 0;
     public string SevenDayPercentText => FormatPercent(snapshot?.SevenDay);
     public string SevenDayResetText => FormatRemaining(snapshot?.SevenDay?.ResetAt);
+    public string SevenDayResetTooltip => FormatExpiryTooltip(snapshot?.SevenDay?.ResetAt);
+    public System.Windows.Media.Brush SevenDayToneBrush => GetQuotaToneBrush(snapshot?.SevenDay);
     public string PlanName => snapshot?.PlanName is { Length: > 0 } plan ? plan : "--";
     public LocalizedText Text => LocalizedTextProvider.Get(language);
-    public string MembershipText => errorMessage is not null
-        ? LocalizeError(errorMessage)
+    public string MembershipText => HasStableError
+        ? LocalizeError(errorMessage!)
         : GetMembershipExpiry() is { } expiry
-        ? FormatMembershipExpiry(expiry, DateTimeOffset.Now, language)
+        ? FormatRemainingCountdown(expiry, DateTimeOffset.Now, language)
         : snapshot is null ? Text.LoadingMembership : Text.MembershipUnknown;
+    public string MembershipTooltipText => HasStableError
+        ? StatusText
+        : GetMembershipExpiry() is { } expiry
+        ? FormatExpiryCountdown(expiry, DateTimeOffset.Now, language)
+        : MembershipText;
     public string ResetCreditsText => snapshot?.ResetCredits is { } count ? count.ToString() : "--";
     public string ResetCreditsDisplayText => $"{Text.ResetCredits}: {ResetCreditsText}";
     public string ErrorText => errorDetail;
     public bool CanRefresh => !refreshing && !disposed;
-    public string ConnectionText => errorMessage is not null ? (language == AppLanguage.English ? "Offline" : "连接异常")
-        : refreshing ? (language == AppLanguage.English ? "Updating" : "更新中") : Text.LiveStatus;
-    public System.Windows.Media.Brush StatusBrush => errorMessage is not null ? System.Windows.Media.Brushes.Salmon
-        : refreshing ? System.Windows.Media.Brushes.LightSkyBlue : System.Windows.Media.Brushes.Turquoise;
+    public string ConnectionText => refreshing
+        ? (language == AppLanguage.English ? "Updating" : "更新中")
+        : HasStableError
+        ? (language == AppLanguage.English ? "Offline" : "连接异常")
+        : errorMessage is not null
+        ? (language == AppLanguage.English ? "Connecting" : "连接中")
+        : Text.LiveStatus;
+    public System.Windows.Media.Brush StatusBrush => HasStableError ? System.Windows.Media.Brushes.Salmon
+        : errorMessage is not null || refreshing ? System.Windows.Media.Brushes.LightSkyBlue : System.Windows.Media.Brushes.Turquoise;
     public int RefreshIntervalSeconds { get; private set; }
-    public string StatusText => errorMessage is not null
+    public string StatusText => HasStableError
         ? LocalizeErrorDetail(errorDetail) + (snapshot is null ? "" : language == AppLanguage.English ? " The last successful quota remains visible." : " 当前额度保留上次成功结果。")
+        : errorMessage is not null ? (language == AppLanguage.English ? "Retrying the quota connection…" : "正在重试额度连接…")
         : refreshing ? Text.RefreshingQuota : $"{Text.RefreshInterval}: {RefreshIntervalSeconds} {Text.Seconds} {Text.AutoRefreshSuffix}";
+
+    private bool HasStableError => errorMessage is not null && consecutiveFailures >= 2;
 
     /// <summary>更新自动刷新间隔并立即作用于后续计时，不启动并行读取。</summary>
     public void SetRefreshIntervalSeconds(int seconds)
@@ -100,8 +118,11 @@ public sealed class QuotaViewModel : INotifyPropertyChanged, IDisposable
             OnPropertyChanged(nameof(Text));
             OnPropertyChanged(nameof(FiveHourResetText));
             OnPropertyChanged(nameof(SevenDayResetText));
+            OnPropertyChanged(nameof(FiveHourResetTooltip));
+            OnPropertyChanged(nameof(SevenDayResetTooltip));
             OnPropertyChanged(nameof(ResetCreditsDisplayText));
             OnPropertyChanged(nameof(ConnectionText));
+            OnPropertyChanged(nameof(MembershipTooltipText));
         }
 
         OnPropertyChanged(nameof(MembershipText));
@@ -159,6 +180,7 @@ public sealed class QuotaViewModel : INotifyPropertyChanged, IDisposable
                 snapshot = await quotaProvider.GetSnapshotAsync(lifetime.Token);
                 errorMessage = null;
                 errorDetail = string.Empty;
+                consecutiveFailures = 0;
             }
             catch (OperationCanceledException) when (disposed)
             {
@@ -168,16 +190,19 @@ public sealed class QuotaViewModel : INotifyPropertyChanged, IDisposable
             {
                 errorMessage = exception.Message;
                 errorDetail = exception.Detail;
+                consecutiveFailures++;
             }
             catch (OperationCanceledException)
             {
                 errorMessage = "读取超时";
                 errorDetail = "额度读取被取消或超时，组件会自动重试。";
+                consecutiveFailures++;
             }
             catch (Exception exception) when (exception is InvalidOperationException or IOException or JsonException or FormatException or OverflowException or Win32Exception or UnauthorizedAccessException or ArgumentException or System.Collections.Generic.KeyNotFoundException)
             {
                 errorMessage = "额度读取失败";
                 errorDetail = "Codex 启动、通信或响应解析失败，请检查安装和网络后重试。";
+                consecutiveFailures++;
             }
         }
         finally
@@ -203,7 +228,10 @@ public sealed class QuotaViewModel : INotifyPropertyChanged, IDisposable
     {
         OnPropertyChanged(nameof(FiveHourResetText));
         OnPropertyChanged(nameof(SevenDayResetText));
+        OnPropertyChanged(nameof(FiveHourResetTooltip));
+        OnPropertyChanged(nameof(SevenDayResetTooltip));
         OnPropertyChanged(nameof(MembershipText));
+        OnPropertyChanged(nameof(MembershipTooltipText));
         _ = RefreshAsync();
     }
 
@@ -225,12 +253,36 @@ public sealed class QuotaViewModel : INotifyPropertyChanged, IDisposable
         return quotaWindow is null ? "--" : $"{quotaWindow.Percent:0}%";
     }
 
-    /// <summary>将额度窗口重置时间显示为绝对到期时间和剩余天、时、分。</summary>
+    /// <summary>将额度窗口重置时间压缩为剩余天、时、分；完整时间由悬浮提示提供。</summary>
     private string FormatRemaining(DateTimeOffset? resetAt)
     {
         return resetAt is null
             ? "--"
-            : FormatExpiryCountdown(resetAt.Value, DateTimeOffset.Now, language);
+            : FormatRemainingCountdown(resetAt.Value, DateTimeOffset.Now, language);
+    }
+
+    /// <summary>返回完整到期时间悬浮提示；未知时间保持短占位符而不伪造日期。</summary>
+    private string FormatExpiryTooltip(DateTimeOffset? expiry)
+    {
+        return expiry is null ? "--" : FormatExpiryCountdown(expiry.Value, DateTimeOffset.Now, language);
+    }
+
+    /// <summary>按剩余百分比选择 25% 区间颜色，保持进度颜色同时表达额度状态。</summary>
+    internal static string GetQuotaTone(double percent)
+    {
+        return percent < 25 ? "Green" : percent < 50 ? "Purple" : percent < 75 ? "Yellow" : "Red";
+    }
+
+    /// <summary>将额度窗口映射为可绑定画刷；缺失窗口使用中性灰色，避免伪造额度状态。</summary>
+    private static System.Windows.Media.Brush GetQuotaToneBrush(QuotaWindow? quotaWindow)
+    {
+        return quotaWindow is null ? System.Windows.Media.Brushes.SlateGray : GetQuotaTone(quotaWindow.Percent) switch
+        {
+            "Green"  => System.Windows.Media.Brushes.LimeGreen,
+            "Purple" => System.Windows.Media.Brushes.MediumPurple,
+            "Yellow" => System.Windows.Media.Brushes.Gold,
+            _        => System.Windows.Media.Brushes.Tomato
+        };
     }
 
     /// <summary>将提供器预定义的错误标题映射为当前界面语言，避免英语界面夹杂中文错误名称。</summary>
@@ -294,6 +346,21 @@ public sealed class QuotaViewModel : INotifyPropertyChanged, IDisposable
     public static string FormatMembershipExpiry(DateTimeOffset expiry, DateTimeOffset now, AppLanguage language)
     {
         return FormatExpiryCountdown(expiry, now, language);
+    }
+
+    /// <summary>只显示剩余时间，不重复展示日期；用于卡片正文的低认知负担展示。</summary>
+    public static string FormatRemainingCountdown(DateTimeOffset expiry, DateTimeOffset now, AppLanguage language)
+    {
+        var remaining = expiry.ToLocalTime() - now.ToLocalTime();
+        if (remaining <= TimeSpan.Zero)
+        {
+            return language == AppLanguage.English ? "Expired" : "已到期";
+        }
+
+        var days = (int) remaining.TotalDays;
+        return language == AppLanguage.English
+            ? $"{days}d {remaining.Hours}h {remaining.Minutes}m left"
+            : $"剩余{days}天{remaining.Hours}小时{remaining.Minutes}分";
     }
 
     /// <summary>
