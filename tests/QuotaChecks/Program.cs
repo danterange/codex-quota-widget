@@ -43,6 +43,7 @@ internal static class Program
                 CheckLocator();
                 CheckSettings();
                 CheckMembershipPresentation();
+                CheckStaleSnapshotAsync().GetAwaiter().GetResult();
                 CheckProtocolAsync().GetAwaiter().GetResult();
                 CheckDispatcher(new CountingProvider(), live: false);
             }
@@ -156,6 +157,27 @@ internal static class Program
         Check(WidgetSettingsStore.Normalize(new WidgetSettings(0)).RefreshIntervalSeconds == 1, "刷新间隔最小为一秒");
                 Check(WidgetSettingsStore.Normalize(new WidgetSettings(5000)).RefreshIntervalSeconds == 3600, "刷新间隔最大为一小时");
         CheckAuthMembershipReader();
+    }
+
+    /// <summary>复现先成功后连续失败的刷新链，确保旧快照保留且第三次失败前不显示异常。</summary>
+    private static async Task CheckStaleSnapshotAsync()
+    {
+        var provider = new StaleSnapshotProvider();
+        var viewModel = new QuotaViewModel(provider, refreshIntervalSeconds: 3600);
+        try
+        {
+            while (provider.Calls < 1) await Task.Delay(5);
+            await viewModel.RefreshNowAsync();
+            Check(viewModel.SevenDayPercent == 55 && viewModel.ConnectionText == "可能非最新", "一次失败保留旧额度并提示可能非最新");
+            await viewModel.RefreshNowAsync();
+            Check(viewModel.ConnectionText == "可能非最新", "两次失败仍不显示连接异常");
+            await viewModel.RefreshNowAsync();
+            Check(viewModel.SevenDayPercent == 55 && viewModel.ConnectionText == "连接异常", "连续三次失败才显示连接异常");
+        }
+        finally
+        {
+            viewModel.Dispose();
+        }
     }
 
     /// <summary>验证从本地 JWT 的 OpenAI 认证声明读取订阅有效期，不把令牌本身暴露到测试输出。</summary>
@@ -371,6 +393,24 @@ internal static class Program
             Calls++;
             if (Calls == 1) throw new QuotaReadException("测试失败", "测试错误恢复");
             return Task.FromResult(new QuotaSnapshot("test", "Pro", null, new QuotaWindow("7d", 45, DateTimeOffset.Now.AddDays(1)), null, null));
+        }
+    }
+
+    /// <summary>第一次返回有效快照，后续固定失败，用于锁定旧数据显示和三次失败阈值。</summary>
+    private sealed class StaleSnapshotProvider : IQuotaProvider
+    {
+        public int Calls { get; private set; }
+
+        /// <summary>返回一次可显示的周额度，随后模拟网络超时且不修改已有快照。</summary>
+        public Task<QuotaSnapshot> GetSnapshotAsync(CancellationToken cancellationToken)
+        {
+            Calls++;
+            if (Calls == 1)
+            {
+                return Task.FromResult(new QuotaSnapshot("stale", "Pro", null, new QuotaWindow("7d", 55, DateTimeOffset.Now.AddDays(1)), null, 1));
+            }
+
+            throw new QuotaReadException("读取超时", "测试用的瞬时网络失败");
         }
     }
 }
