@@ -4,7 +4,7 @@
         xmlns:shell="clr-namespace:System.Windows.Shell;assembly=PresentationFramework"
         x:Name="WidgetWindow" Title="{Binding Text.WindowTitle}" Icon="pack://application:,,,/CodexQuotaWidget;component/assets/app.ico"
         Width="320" SizeToContent="Height" MinWidth="300" MinHeight="145"
-        Topmost="True" WindowStyle="None" ResizeMode="CanResize" ShowInTaskbar="True"
+        Topmost="True" WindowStyle="None" ResizeMode="CanResize" ShowInTaskbar="False"
         Background="Transparent" UseLayoutRounding="True"
         SourceInitialized="WindowSourceInitialized" StateChanged="WindowStateChanged"
         SizeChanged="MainWindowSizeChanged" Loaded="MainWindowLoaded" Closing="MainWindowClosing" Closed="MainWindowClosed">

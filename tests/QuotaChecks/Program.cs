@@ -57,7 +57,7 @@ internal static class Program
         }
     }
 
-    /// <summary>使用隔离窗口验证英文布局与关闭隐藏，不创建托盘、不写入用户设置。</summary>
+    /// <summary>使用隔离窗口验证英文布局、任务栏排除和隐藏恢复，不创建托盘、不写入用户设置。</summary>
     private static void CheckWindowShell()
     {
         var app = new System.Windows.Application { ShutdownMode = ShutdownMode.OnExplicitShutdown };
@@ -74,6 +74,7 @@ internal static class Program
             window.Dispatcher.Invoke(() => { }, DispatcherPriority.ApplicationIdle);
             window.UpdateLayout();
             Check(window.ActualWidth == 320 && window.ActualHeight <= 280, "英文主界面保持紧凑尺寸");
+            CheckTaskbarExcluded(window, "首次显示");
             var output = Path.Combine(Directory.GetCurrentDirectory(), "artifacts", "ui-test");
             Directory.CreateDirectory(output);
             SaveWindowRender(window, Path.Combine(output, "english-dashboard.png"));
@@ -82,10 +83,20 @@ internal static class Program
             window.Dispatcher.Invoke(() => { }, DispatcherPriority.ApplicationIdle);
             window.UpdateLayout();
             SaveWindowRender(window, Path.Combine(output, "english-settings.png"));
+            CheckTaskbarExcluded(window, "设置页");
+            window.WindowState = WindowState.Maximized;
+            window.Dispatcher.Invoke(() => { }, DispatcherPriority.ApplicationIdle);
+            CheckTaskbarExcluded(window, "最大化");
+            window.WindowState = WindowState.Normal;
+            window.Show();
+            window.Activate();
+            window.Dispatcher.Invoke(() => { }, DispatcherPriority.ApplicationIdle);
+            CheckTaskbarExcluded(window, "还原");
             window.Close();
             Check(!window.IsVisible && !window.Dispatcher.HasShutdownStarted, "正常关闭仅隐藏主窗口");
             window.Show();
             Check(window.IsVisible, "隐藏后同一窗口可以恢复");
+            CheckTaskbarExcluded(window, "隐藏后恢复");
             Console.WriteLine("WINDOW SHELL CHECKS PASSED");
         }
         finally
@@ -94,6 +105,27 @@ internal static class Program
             app.Shutdown();
         }
     }
+
+    /// <summary>同时验证 WPF 配置与原生窗口状态，防止窗口还原时重新注册任务栏入口。</summary>
+    private static void CheckTaskbarExcluded(Window window, string phase)
+    {
+        var handle = new System.Windows.Interop.WindowInteropHelper(window).Handle;
+        const int extendedStyleIndex = -20;
+        const long appWindowStyle = 0x00040000;
+        const uint ownerRelationship = 4;
+        var extendedStyle = GetWindowLongPtr(handle, extendedStyleIndex).ToInt64();
+        // WPF 在 ShowInTaskbar=false 时提供隐藏 owner，阻止 Shell 把主窗口视作独立任务栏项。
+        Check(!window.ShowInTaskbar && (extendedStyle & appWindowStyle) == 0
+              && GetWindow(handle, ownerRelationship) != IntPtr.Zero, phase + "不创建任务栏入口");
+    }
+
+    /// <summary>只读取得扩展窗口样式，检查 WS_EX_APPWINDOW 没有被恢复操作打开。</summary>
+    [System.Runtime.InteropServices.DllImport("user32.dll", EntryPoint = "GetWindowLongPtrW")]
+    private static extern IntPtr GetWindowLongPtr(IntPtr window, int index);
+
+    /// <summary>只读取得 WPF 隐藏 owner，不枚举或改变其他程序的窗口。</summary>
+    [System.Runtime.InteropServices.DllImport("user32.dll")]
+    private static extern IntPtr GetWindow(IntPtr window, uint relationship);
 
     /// <summary>保存隔离窗口的真实 WPF 渲染，供人工复核文本换行和控件裁切。</summary>
     private static void SaveWindowRender(Window window, string path)

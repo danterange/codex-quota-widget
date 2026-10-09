@@ -211,6 +211,9 @@ try {
     [void][UiScreenshotNative]::SetForegroundWindow([IntPtr]$window.Current.NativeWindowHandle)
     Start-Sleep -Milliseconds 350
     $extendedStyle = [UiScreenshotNative]::GetWindowLongPtr([IntPtr]$window.Current.NativeWindowHandle, -20).ToInt64()
+    if (($extendedStyle -band 0x40000) -ne 0) {
+        throw 'Widget window still registers as a taskbar application.'
+    }
     if (($extendedStyle -band 0x8) -eq 0) {
         throw 'Widget window is not topmost by default.'
     }
