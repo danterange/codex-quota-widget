@@ -73,25 +73,18 @@ public sealed class QuotaViewModel : INotifyPropertyChanged, IDisposable
     public bool CanRefresh => !refreshing && !disposed;
     public string ConnectionText => HasStableError
         ? (language == AppLanguage.English ? "Offline" : "连接异常")
-        : snapshot is not null && (refreshing || errorMessage is not null)
-        ? (language == AppLanguage.English ? "Possibly stale" : "可能非最新")
-        : refreshing
-        ? (language == AppLanguage.English ? "Updating" : "更新中")
-        : errorMessage is not null
-        ? (language == AppLanguage.English ? "Connecting" : "连接中")
+        : refreshing || errorMessage is not null
+        ? Text.FetchingLatest
         : Text.LiveStatus;
     public System.Windows.Media.Brush StatusBrush => HasStableError ? System.Windows.Media.Brushes.Salmon
-        : snapshot is not null && (refreshing || errorMessage is not null) ? System.Windows.Media.Brushes.Goldenrod
         : errorMessage is not null || refreshing ? System.Windows.Media.Brushes.LightSkyBlue : System.Windows.Media.Brushes.Turquoise;
     public int RefreshIntervalSeconds { get; private set; }
     public string StatusText => HasStableError
         ? LocalizeErrorDetail(errorDetail) + (snapshot is null ? "" : language == AppLanguage.English ? " The last successful quota remains visible." : " 当前额度保留上次成功结果。")
-        : snapshot is not null && (refreshing || errorMessage is not null)
-        ? (language == AppLanguage.English ? "Showing the last successful quota while the update retries." : "正在重试，当前显示上次成功的额度。")
-        : errorMessage is not null ? (language == AppLanguage.English ? "Retrying the quota connection…" : "正在重试额度连接…")
-        : refreshing ? Text.RefreshingQuota : $"{Text.RefreshInterval}: {RefreshIntervalSeconds} {Text.Seconds} {Text.AutoRefreshSuffix}";
+        : refreshing || errorMessage is not null ? Text.FetchingLatest
+        : $"{Text.RefreshInterval}: {RefreshIntervalSeconds} {Text.Seconds} {Text.AutoRefreshSuffix}";
 
-    private bool HasStableError => errorMessage is not null && consecutiveFailures >= 3;
+    private bool HasStableError => errorMessage is not null && consecutiveFailures >= 2;
 
     /// <summary>更新自动刷新间隔并立即作用于后续计时，不启动并行读取。</summary>
     public void SetRefreshIntervalSeconds(int seconds)

@@ -168,11 +168,9 @@ internal static class Program
         {
             while (provider.Calls < 1) await Task.Delay(5);
             await viewModel.RefreshNowAsync();
-            Check(viewModel.SevenDayPercent == 55 && viewModel.ConnectionText == "可能非最新", "一次失败保留旧额度并提示可能非最新");
+            Check(viewModel.SevenDayPercent == 55 && viewModel.ConnectionText == "正在获取最新数据…", "一次失败保留旧额度并显示获取最新数据");
             await viewModel.RefreshNowAsync();
-            Check(viewModel.ConnectionText == "可能非最新", "两次失败仍不显示连接异常");
-            await viewModel.RefreshNowAsync();
-            Check(viewModel.SevenDayPercent == 55 && viewModel.ConnectionText == "连接异常", "连续三次失败才显示连接异常");
+            Check(viewModel.SevenDayPercent == 55 && viewModel.ConnectionText == "连接异常", "连续两次失败才显示连接异常");
         }
         finally
         {
