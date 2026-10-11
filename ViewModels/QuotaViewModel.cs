@@ -189,6 +189,14 @@ public sealed class QuotaViewModel : INotifyPropertyChanged, IDisposable
         return RefreshAsync();
     }
 
+    /// <summary>在窗口替换主题资源后重新通知额度语义画刷，避免既有绑定继续持有上一个主题的具体 Brush 实例。</summary>
+    internal void RefreshThemeBrushes()
+    {
+        OnPropertyChanged(nameof(FiveHourToneBrush));
+        OnPropertyChanged(nameof(SevenDayToneBrush));
+        OnPropertyChanged(nameof(MonthlyToneBrush));
+    }
+
     /// <summary>
     /// 停止定时器并取消进行中的读取，窗口关闭后不再更新绑定。
     /// </summary>
@@ -336,16 +344,23 @@ public sealed class QuotaViewModel : INotifyPropertyChanged, IDisposable
         return percent > 75 ? "Green" : percent > 50 ? "Purple" : percent > 25 ? "Yellow" : "Red";
     }
 
-    /// <summary>将额度窗口映射为可绑定画刷；缺失窗口使用中性灰色，避免伪造额度状态。</summary>
+    /// <summary>将额度窗口映射为当前主题可读的语义画刷；缺失窗口使用中性灰色，避免伪造额度状态。</summary>
     private static System.Windows.Media.Brush GetQuotaToneBrush(QuotaWindow? quotaWindow)
     {
-        return quotaWindow is null ? System.Windows.Media.Brushes.SlateGray : GetQuotaTone(quotaWindow.Percent) switch
+        if (quotaWindow is null)
         {
-            "Green"  => System.Windows.Media.Brushes.LimeGreen,
-            "Purple" => System.Windows.Media.Brushes.MediumPurple,
-            "Yellow" => System.Windows.Media.Brushes.Gold,
-            _        => System.Windows.Media.Brushes.Tomato
+            return System.Windows.Media.Brushes.SlateGray;
+        }
+
+        var resourceKey = GetQuotaTone(quotaWindow.Percent) switch
+        {
+            "Green"  => "QuotaGreenBrush",
+            "Purple" => "QuotaPurpleBrush",
+            "Yellow" => "QuotaYellowBrush",
+            _        => "QuotaRedBrush"
         };
+        return System.Windows.Application.Current?.TryFindResource(resourceKey) as System.Windows.Media.Brush
+            ?? System.Windows.Media.Brushes.SlateGray;
     }
 
     /// <summary>将协议原始套餐名转换为当前界面语言，避免 Free 账户显示低可读性的内部小写值。</summary>

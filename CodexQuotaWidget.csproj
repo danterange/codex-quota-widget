@@ -16,5 +16,13 @@
   <ItemGroup>
     <Compile Remove="tests/**/*.cs" />
     <Resource Include="assets/app.ico" />
+    <Content Include="restart\**\*.ps1">
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+      <CopyToPublishDirectory>PreserveNewest</CopyToPublishDirectory>
+    </Content>
+    <Content Include="restart\**\*.psm1">
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+      <CopyToPublishDirectory>PreserveNewest</CopyToPublishDirectory>
+    </Content>
   </ItemGroup>
 </Project>

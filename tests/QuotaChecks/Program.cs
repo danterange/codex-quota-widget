@@ -49,6 +49,7 @@ internal static class Program
                 CheckMembershipPresentation();
                 CheckFreePresentationAsync().GetAwaiter().GetResult();
                 CheckStaleSnapshotAsync().GetAwaiter().GetResult();
+                CheckDesktopRestartHelperAsync().GetAwaiter().GetResult();
                 CheckProtocolAsync().GetAwaiter().GetResult();
                 CheckDispatcher(new CountingProvider(), live: false);
             }
@@ -63,7 +64,7 @@ internal static class Program
         }
     }
 
-    /// <summary>使用隔离窗口验证英文布局、任务栏排除和隐藏恢复，不创建托盘、不写入用户设置。</summary>
+    /// <summary>使用隔离窗口验证英文布局、主题循环、任务栏排除和隐藏恢复，不创建托盘、不写入用户设置。</summary>
     private static void CheckWindowShell()
     {
         var app = new System.Windows.Application { ShutdownMode = ShutdownMode.OnExplicitShutdown };
@@ -84,6 +85,27 @@ internal static class Program
             var output = Path.Combine(Directory.GetCurrentDirectory(), "artifacts", "ui-test");
             Directory.CreateDirectory(output);
             SaveWindowRender(window, Path.Combine(output, "english-dashboard.png"));
+            var themeButton = window.FindName("ThemeButton") as System.Windows.Controls.Button
+                ?? throw new InvalidOperationException("主题标题按钮缺失。");
+            var restartButton = window.FindName("RestartCodexButton") as System.Windows.Controls.Button
+                ?? throw new InvalidOperationException("桌面端重启标题按钮缺失。");
+            Check(true, "主题和桌面端重启标题按钮存在");
+            Check(System.Windows.Automation.AutomationProperties.GetName(themeButton) == "Night", "夜间主题按钮初始辅助名称正确");
+            Check(System.Windows.Automation.AutomationProperties.GetName(restartButton).Contains("Restart", StringComparison.Ordinal), "桌面端重启按钮有明确辅助名称");
+            themeButton.RaiseEvent(new System.Windows.RoutedEventArgs(System.Windows.Controls.Button.ClickEvent));
+            window.Dispatcher.Invoke(() => { }, DispatcherPriority.ApplicationIdle);
+            Check(System.Windows.Automation.AutomationProperties.GetName(themeButton) == "Day", "主题按钮可切换到白天主题");
+            var tooltipBackground = (System.Windows.Media.SolidColorBrush)app.Resources["TooltipBrush"];
+            var tooltipText = (System.Windows.Media.SolidColorBrush)app.Resources["TooltipTextBrush"];
+            Check(GetContrastRatio(tooltipBackground.Color, tooltipText.Color) >= 4.5, "白天主题日期悬浮提示文字保持可读对比度");
+            SaveWindowRender(window, Path.Combine(output, "english-day.png"));
+            themeButton.RaiseEvent(new System.Windows.RoutedEventArgs(System.Windows.Controls.Button.ClickEvent));
+            window.Dispatcher.Invoke(() => { }, DispatcherPriority.ApplicationIdle);
+            Check(System.Windows.Automation.AutomationProperties.GetName(themeButton) == "Glass", "主题按钮可切换到玻璃主题");
+            SaveWindowRender(window, Path.Combine(output, "english-glass.png"));
+            themeButton.RaiseEvent(new System.Windows.RoutedEventArgs(System.Windows.Controls.Button.ClickEvent));
+            window.Dispatcher.Invoke(() => { }, DispatcherPriority.ApplicationIdle);
+            Check(System.Windows.Automation.AutomationProperties.GetName(themeButton) == "Night", "主题按钮循环回夜间默认主题");
             var settings = (System.Windows.Controls.RadioButton)window.FindName("SettingsRailButton");
             settings.IsChecked = true;
             window.Dispatcher.Invoke(() => { }, DispatcherPriority.ApplicationIdle);
@@ -144,23 +166,24 @@ internal static class Program
         encoder.Save(stream);
     }
 
-    /// <summary>验证默认偏好、语言持久化和刷新范围校验。</summary>
+    /// <summary>验证默认偏好、旧配置升级、主题持久化和刷新范围校验。</summary>
     private static void CheckSettings()
     {
         var path = Path.Combine(Path.GetTempPath(), "quota-settings-" + Guid.NewGuid().ToString("N"), "settings.json");
         var defaults = WidgetSettingsStore.Load(path);
-        Check(defaults.RefreshIntervalSeconds == 10 && defaults.Language == AppLanguage.SimplifiedChinese,
-            "默认刷新间隔和中文偏好正确");
+        Check(defaults.RefreshIntervalSeconds == 10 && defaults.Language == AppLanguage.SimplifiedChinese && defaults.Theme == WidgetTheme.Night,
+            "默认刷新间隔、中文和夜间主题偏好正确");
         Directory.CreateDirectory(Path.GetDirectoryName(path)!);
         File.WriteAllText(path, "{\"RefreshIntervalSeconds\":30}");
         var upgraded = WidgetSettingsStore.Load(path);
-        Check(upgraded.RefreshIntervalSeconds == 30 && upgraded.Language == AppLanguage.SimplifiedChinese,
-            "旧版仅有刷新间隔的配置会升级为中文");
-        WidgetSettingsStore.Save(new WidgetSettings(25, AppLanguage.English), path);
+        Check(upgraded.RefreshIntervalSeconds == 30 && upgraded.Language == AppLanguage.SimplifiedChinese && upgraded.Theme == WidgetTheme.Night,
+            "旧版仅有刷新间隔的配置会升级为中文和夜间主题");
+        WidgetSettingsStore.Save(new WidgetSettings(25, AppLanguage.English, WidgetTheme.Glass), path);
         var saved = WidgetSettingsStore.Load(path);
-        Check(saved.RefreshIntervalSeconds == 25 && saved.Language == AppLanguage.English, "设置页偏好可完整保存");
+        Check(saved.RefreshIntervalSeconds == 25 && saved.Language == AppLanguage.English && saved.Theme == WidgetTheme.Glass, "设置页偏好可完整保存");
         Check(WidgetSettingsStore.Normalize(new WidgetSettings(0)).RefreshIntervalSeconds == 1, "刷新间隔最小为一秒");
-                Check(WidgetSettingsStore.Normalize(new WidgetSettings(5000)).RefreshIntervalSeconds == 3600, "刷新间隔最大为一小时");
+        Check(WidgetSettingsStore.Normalize(new WidgetSettings(5000)).RefreshIntervalSeconds == 3600, "刷新间隔最大为一小时");
+        Check(WidgetSettingsStore.Normalize(new WidgetSettings(Theme: (WidgetTheme)999)).Theme == WidgetTheme.Night, "损坏主题配置回退夜间默认");
         CheckAuthMembershipReader();
     }
 
@@ -189,6 +212,26 @@ internal static class Program
         }
     }
 
+    /// <summary>计算两个不透明颜色的 WCAG 相对亮度对比度，用于锁定白天主题深色悬浮层上的文字不会再次不可见。</summary>
+    private static double GetContrastRatio(System.Windows.Media.Color first, System.Windows.Media.Color second)
+    {
+        var firstLuminance = GetRelativeLuminance(first);
+        var secondLuminance = GetRelativeLuminance(second);
+        return (Math.Max(firstLuminance, secondLuminance) + 0.05) / (Math.Min(firstLuminance, secondLuminance) + 0.05);
+    }
+
+    /// <summary>将 sRGB 三个通道线性化后计算 WCAG 相对亮度；透明度由调用方主题保证为接近不透明的悬浮层。</summary>
+    private static double GetRelativeLuminance(System.Windows.Media.Color color)
+    {
+        static double Linearize(byte channel)
+        {
+            var value = channel / 255d;
+            return value <= 0.04045 ? value / 12.92 : Math.Pow((value + 0.055) / 1.055, 2.4);
+        }
+
+        return 0.2126 * Linearize(color.R) + 0.7152 * Linearize(color.G) + 0.0722 * Linearize(color.B);
+    }
+
     /// <summary>复现先成功后连续失败的刷新链，确保旧快照保留且第三次失败前不显示异常。</summary>
     private static async Task CheckStaleSnapshotAsync()
     {
@@ -206,6 +249,69 @@ internal static class Program
         {
             viewModel.Dispose();
         }
+    }
+
+    /// <summary>用临时脚本验证重启服务只接受本次 run 的最终报告、显式传递二次确认的强制参数，并拒绝任意外部报告路径，不触碰真实 Codex 进程。</summary>
+    private static async Task CheckDesktopRestartHelperAsync()
+    {
+        var outputRoot = Path.Combine(Directory.GetCurrentDirectory(), "bin", "Release", "net8.0-windows", "restart");
+        foreach (var required in new[] { "CodexDesktopRestart.Common.psm1", "Restart-CodexDesktop.ps1", "Invoke-CodexDesktopRestartSupervisor.ps1" })
+        {
+            Check(File.Exists(Path.Combine(outputRoot, required)), "发布输出包含重启助手 " + required);
+        }
+
+        var root = Path.Combine(Path.GetTempPath(), "quota-restart-test-" + Guid.NewGuid().ToString("N"));
+        var runId = DateTimeOffset.UtcNow.ToString("yyyyMMdd-HHmmss") + "-" + Guid.NewGuid().ToString("N")[..8];
+        var runDirectory = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "CodexDesktopRestart", "runs", runId);
+        Directory.CreateDirectory(root);
+        var scriptPath = Path.Combine(root, "fake-restart.ps1");
+        var reportPath = Path.Combine(runDirectory, "restart-report.json");
+        var forceMarkerPath = Path.Combine(root, "force-marker.txt");
+        var helperPayload = JsonSerializer.Serialize(new
+        {
+            state = "desktop_restart_scheduled",
+            reportPath,
+            runId
+        });
+        var reportPayload = JsonSerializer.Serialize(new { state = "desktop_relaunched_manifest_ready", run_id = runId });
+        File.WriteAllText(scriptPath, string.Join(Environment.NewLine, new[]
+        {
+            "[System.IO.Directory]::CreateDirectory('" + EscapePowerShellSingleQuoted(runDirectory) + "') | Out-Null",
+            "[System.IO.File]::WriteAllText('" + EscapePowerShellSingleQuoted(reportPath) + "', '" + EscapePowerShellSingleQuoted(reportPayload) + "')",
+            "if ($args -contains '-ForceAfterTimeout') { [System.IO.File]::WriteAllText('" + EscapePowerShellSingleQuoted(forceMarkerPath) + "', 'confirmed') }",
+            "Write-Output '[RESULT] " + EscapePowerShellSingleQuoted(helperPayload) + "'",
+            "exit 0"
+        }));
+        try
+        {
+            var service = new CodexDesktopRestartService(scriptPath);
+            var result = await service.RestartAsync(CancellationToken.None);
+            Check(result == CodexDesktopRestartResult.Relaunched, "重启助手仅在监督器最终报告成功后显示完成");
+            var forcedResult = await service.RestartAsync(CancellationToken.None, forceAfterTimeout: true);
+            Check(forcedResult == CodexDesktopRestartResult.Relaunched && File.Exists(forceMarkerPath), "二次确认才会向重启助手传递强制关闭参数");
+
+            var invalidScriptPath = Path.Combine(root, "invalid-report.ps1");
+            var invalidPayload = JsonSerializer.Serialize(new
+            {
+                state = "desktop_restart_scheduled",
+                reportPath = Path.Combine(root, "untrusted-report.json"),
+                runId
+            });
+            File.WriteAllText(invalidScriptPath, "Write-Output '[RESULT] " + EscapePowerShellSingleQuoted(invalidPayload) + "'" + Environment.NewLine + "exit 0");
+            var invalidResult = await new CodexDesktopRestartService(invalidScriptPath).RestartAsync(CancellationToken.None);
+            Check(invalidResult == CodexDesktopRestartResult.Failed, "重启助手拒绝本次 run 目录之外的报告路径");
+        }
+        finally
+        {
+            if (Directory.Exists(root)) Directory.Delete(root, recursive: true);
+            if (Directory.Exists(runDirectory)) Directory.Delete(runDirectory, recursive: true);
+        }
+    }
+
+    /// <summary>将测试路径和 JSON 变为 PowerShell 单引号字符串字面量，避免临时辅助脚本受到路径空格或引号影响。</summary>
+    private static string EscapePowerShellSingleQuoted(string value)
+    {
+        return value.Replace("'", "''", StringComparison.Ordinal);
     }
 
     /// <summary>验证从本地 JWT 的 OpenAI 认证声明读取订阅有效期，不把令牌本身暴露到测试输出。</summary>

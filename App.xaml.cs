@@ -22,9 +22,23 @@ public partial class App : System.Windows.Application
     {
         base.OnStartup(e);
         settings = WidgetSettingsStore.Load();
-        MainWindow = new MainWindow(settings, SaveSettings);
+        settings = ApplyCommandLineThemeOverride(settings, e.Args);
+        var suppressPersistenceForAutomation = e.Args.Any(argument => string.Equals(argument, "--test-no-persist-settings", StringComparison.OrdinalIgnoreCase));
+        MainWindow = new MainWindow(settings, suppressPersistenceForAutomation ? _ => { } : SaveSettings);
         CreateTrayIcon();
         MainWindow.Show();
+    }
+
+    /// <summary>仅为 UI 验证接受临时主题参数；结合测试专用不持久化参数时，演示主题循环不会改写用户真实偏好。</summary>
+    private static WidgetSettings ApplyCommandLineThemeOverride(WidgetSettings current, IEnumerable<string> arguments)
+    {
+        var value = arguments.FirstOrDefault(argument => argument.StartsWith("--theme=", StringComparison.OrdinalIgnoreCase));
+        if (value is null || !Enum.TryParse<WidgetTheme>(value["--theme=".Length..], ignoreCase: true, out var theme))
+        {
+            return current;
+        }
+
+        return current with { Theme = WidgetSettingsStore.Normalize(current with { Theme = theme }).Theme };
     }
 
     /// <summary>创建托盘图标；菜单会随语言设置重建，但始终只提供主界面和退出两个操作。</summary>
@@ -98,6 +112,12 @@ public partial class App : System.Windows.Application
         if (window.WindowState == WindowState.Minimized)
             window.WindowState = WindowState.Normal;
         window.Activate();
+    }
+
+    /// <summary>通过已有托盘图标展示短暂的重启结果，不额外创建会出现在任务栏中的提示窗口。</summary>
+    internal void ShowNotification(string title, string message, Forms.ToolTipIcon icon = Forms.ToolTipIcon.Info)
+    {
+        trayIcon?.ShowBalloonTip(7000, title, message, icon);
     }
 
     /// <summary>通过托盘菜单关闭窗口和托盘资源，确保进程完全退出。</summary>

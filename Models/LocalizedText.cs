@@ -46,7 +46,24 @@ public sealed record LocalizedText(
     string MinimizeWindow,
     string MaximizeWindow,
     string RestoreWindow,
-    string CloseWindow);
+    string CloseWindow,
+    string RestartCodex,
+    string RestartCodexTooltip,
+    string RestartCodexPreparing,
+    string RestartCodexReady,
+    string RestartCodexLoginRequired,
+    string RestartCodexNeedsManualClose,
+    string RestartCodexForceConfirmationTitle,
+    string RestartCodexForceConfirmation,
+    string RestartCodexSnapshotUnavailable,
+    string RestartCodexTimedOut,
+    string RestartCodexUnavailable,
+    string ThemeNight,
+    string ThemeDay,
+    string ThemeGlass,
+    string ThemeNightTooltip,
+    string ThemeDayTooltip,
+    string ThemeGlassTooltip);
 
 /// <summary>按用户保存的语言返回一组完整界面文本，避免混用中英文控件标题。</summary>
 public static class LocalizedTextProvider
@@ -98,7 +115,24 @@ public static class LocalizedTextProvider
                 "Minimize",
                 "Maximize",
                 "Restore",
-                "Close to tray")
+                "Close to tray",
+                "Restart Codex Desktop",
+                "Restart ChatGPT Desktop only. CLI sessions are never closed. Detectable active desktop-thread candidates are recorded for manual resume after relaunch.",
+                "Preparing a safe Codex Desktop restart…",
+                "Codex Desktop relaunched. Review the recorded interrupted threads and resume them manually if needed.",
+                "Codex Desktop reopened, but sign-in needs your attention. CLI sessions were not changed.",
+                "Codex Desktop did not close normally, so it was left running. Click Restart again to explicitly confirm force-closing only the exact Desktop package processes.",
+                "Force-close Codex Desktop?",
+                "Codex Desktop did not exit after a normal close request. Force-close only the exact captured OpenAI.Codex package processes and continue the restart? CLI sessions and terminals will not be closed. Any unsaved Desktop work may be lost.",
+                "Codex Desktop was left running because a safe session snapshot was unavailable.",
+                "The restart helper is still waiting for a safe result. The existing desktop session was not force-stopped.",
+                "Codex Desktop restart is unavailable. The current desktop session was left untouched.",
+                "Night",
+                "Day",
+                "Glass",
+                "Current theme: Night. Click to switch to Day — bright, high-contrast surfaces.",
+                "Current theme: Day. Click to switch to Glass — stronger translucent acrylic material.",
+                "Current theme: Glass. Click to switch to Night — the default dark theme.")
             : new LocalizedText(
                 "Codex 额度",
                 "额度监控",
@@ -142,6 +176,23 @@ public static class LocalizedTextProvider
                 "最小化",
                 "最大化",
                 "还原",
-                "关闭到托盘");
+                "关闭到托盘",
+                "优雅重启 Codex 桌面端",
+                "仅重启 ChatGPT Desktop，不会关闭 CLI 会话。会记录可识别的活跃桌面端会话候选，重新打开后请按恢复清单手动继续未完成会话。",
+                "正在准备安全重启 Codex 桌面端…",
+                "Codex 桌面端已重新打开。请查看恢复清单，并按需手动继续未完成会话。",
+                "Codex 桌面端已重新打开，但需要你完成登录。CLI 会话未被修改。",
+                "Codex 桌面端未能正常退出，因此已保持运行。再次点击重启，可明确确认仅强制结束已精确验证的 Desktop 包进程。",
+                "强制关闭 Codex 桌面端？",
+                "Codex 桌面端在正常关闭请求后仍未退出。是否仅强制结束已捕获且精确匹配 OpenAI.Codex 包路径的进程，并继续重启？CLI 会话和终端不会关闭；未保存的桌面端内容可能丢失。",
+                "由于无法安全记录会话快照，Codex 桌面端保持运行。",
+                "重启助手仍在等待安全结果，现有桌面端没有被强制结束。",
+                "当前无法安全重启 Codex 桌面端，已保持现有桌面端会话不变。",
+                "夜间",
+                "白天",
+                "玻璃",
+                "当前主题：夜间默认。点击切换为白天主题，适合明亮桌面。",
+                "当前主题：白天。点击切换为玻璃主题，使用更强的半透明亚克力效果。",
+                "当前主题：玻璃。点击切换为夜间默认主题。");
     }
 }

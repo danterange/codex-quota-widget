@@ -49,16 +49,20 @@ internal static class WidgetSettingsStore
         }
     }
 
-    /// <summary>限制刷新间隔与语言枚举，防止损坏的配置造成高频请求或无法切换的界面。</summary>
+    /// <summary>限制刷新间隔并校验枚举，防止损坏的本地配置造成高频请求、无效语言或不可读主题。</summary>
     internal static WidgetSettings Normalize(WidgetSettings settings)
     {
         var language = Enum.IsDefined(settings.Language)
             ? settings.Language
             : AppLanguage.SimplifiedChinese;
+        var theme = Enum.IsDefined(settings.Theme)
+            ? settings.Theme
+            : WidgetTheme.Night;
         return settings with
         {
             RefreshIntervalSeconds = Math.Clamp(settings.RefreshIntervalSeconds, 1, 3600),
-            Language               = language
+            Language               = language,
+            Theme                  = theme
         };
     }
 

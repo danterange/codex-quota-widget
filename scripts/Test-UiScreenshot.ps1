@@ -41,7 +41,8 @@ function Save-WindowScreenshot {
     param(
         [Parameter(Mandatory = $true)] [System.Windows.Automation.AutomationElement]$Window,
         [Parameter(Mandatory = $true)] [string]$Path,
-        [switch]$Desktop
+        [switch]$Desktop,
+        [switch]$IncludeTooltipContext
     )
 
     $bounds = $Window.Current.BoundingRectangle
@@ -50,6 +51,11 @@ function Save-WindowScreenshot {
         [int]$bounds.Top,
         [int]$bounds.Width,
         [int]$bounds.Height)
+    if ($IncludeTooltipContext) {
+        $virtualScreen = [System.Windows.Forms.SystemInformation]::VirtualScreen
+        $expanded = [System.Drawing.Rectangle]::Inflate($rectangle, 70, 70)
+        $rectangle = [System.Drawing.Rectangle]::Intersect($expanded, $virtualScreen)
+    }
     if ($rectangle.Width -lt 300 -or $rectangle.Width -gt 1000 -or $rectangle.Height -lt 140 -or $rectangle.Height -gt 700) {
         throw "Unexpected adaptive widget size: $($rectangle.Width)x$($rectangle.Height)"
     }
@@ -93,11 +99,13 @@ function Capture-RenderScreenshot {
         [Parameter(Mandatory = $true)] [string]$Executable,
         [Parameter(Mandatory = $true)] [string]$Path,
         [switch]$Settings,
-        [switch]$Free
+        [switch]$Free,
+        [ValidateSet('Night', 'Day', 'Glass')]
+        [string]$Theme = 'Night'
     )
 
     Remove-Item -LiteralPath $Path -Force -ErrorAction SilentlyContinue
-    $arguments = @($(if ($Free) { '--demo-free' } else { '--demo' }), '--exit-on-close', "--capture-screenshot=$Path")
+    $arguments = @($(if ($Free) { '--demo-free' } else { '--demo' }), '--exit-on-close', "--capture-screenshot=$Path", "--theme=$Theme")
     if ($Settings) { $arguments += '--start-settings' }
     $captureProcess = Start-Process -FilePath $Executable -WorkingDirectory (Split-Path -Parent $Executable) -ArgumentList $arguments -PassThru
     try {
@@ -161,6 +169,25 @@ function Wait-DescendantByName {
     return $null
 }
 
+function Wait-DescendantByAutomationId {
+    param(
+        [Parameter(Mandatory = $true)] [System.Windows.Automation.AutomationElement]$Window,
+        [Parameter(Mandatory = $true)] [string]$AutomationId,
+        [int]$TimeoutMilliseconds = 2500
+    )
+
+    $condition = [System.Windows.Automation.PropertyCondition]::new(
+        [System.Windows.Automation.AutomationElement]::AutomationIdProperty,
+        $AutomationId)
+    $deadline = [DateTime]::UtcNow.AddMilliseconds($TimeoutMilliseconds)
+    do {
+        $match = $Window.FindFirst([System.Windows.Automation.TreeScope]::Descendants, $condition)
+        if ($null -ne $match -and -not $match.Current.IsOffscreen) { return $match }
+        Start-Sleep -Milliseconds 100
+    } while ([DateTime]::UtcNow -lt $deadline)
+    return $null
+}
+
 function Invoke-NavigationElement {
     param([Parameter(Mandatory = $true)] [System.Windows.Automation.AutomationElement]$Element)
 
@@ -187,12 +214,16 @@ New-Item -ItemType Directory -Path $output -Force | Out-Null
 $dashboardShot = Join-Path $output 'dashboard.png'
 $settingsShot = Join-Path $output 'settings.png'
 $freeDashboardShot = Join-Path $output 'free-dashboard.png'
-Capture-RenderScreenshot -Executable $exe -Path $dashboardShot
-Capture-RenderScreenshot -Executable $exe -Path $settingsShot -Settings
-Capture-RenderScreenshot -Executable $exe -Path $freeDashboardShot -Free
+$dayDashboardShot = Join-Path $output 'dashboard-day.png'
+$glassDashboardShot = Join-Path $output 'dashboard-glass.png'
+Capture-RenderScreenshot -Executable $exe -Path $dashboardShot -Theme Night
+Capture-RenderScreenshot -Executable $exe -Path $dayDashboardShot -Theme Day
+Capture-RenderScreenshot -Executable $exe -Path $glassDashboardShot -Theme Glass
+Capture-RenderScreenshot -Executable $exe -Path $settingsShot -Settings -Theme Night
+Capture-RenderScreenshot -Executable $exe -Path $freeDashboardShot -Free -Theme Night
 
 # Free accounts can have a valid monthly window and a credit balance without 5h/7d data.
-$freeProcess = Start-Process -FilePath $exe -WorkingDirectory (Split-Path -Parent $exe) -ArgumentList @('--demo-free', '--exit-on-close') -PassThru
+$freeProcess = Start-Process -FilePath $exe -WorkingDirectory (Split-Path -Parent $exe) -ArgumentList @('--demo-free', '--exit-on-close', '--theme=Night') -PassThru
 $freeWindow = $null
 try {
     $freeWindowCondition = [System.Windows.Automation.AndCondition]::new(
@@ -235,7 +266,7 @@ finally {
     if (-not $freeProcess.HasExited) { Stop-Process -Id $freeProcess.Id }
     $freeProcess.Dispose()
 }
-$process = Start-Process -FilePath $exe -WorkingDirectory (Split-Path -Parent $exe) -ArgumentList @('--demo', '--exit-on-close') -PassThru
+$process = Start-Process -FilePath $exe -WorkingDirectory (Split-Path -Parent $exe) -ArgumentList @('--demo', '--exit-on-close', '--theme=Glass', '--test-no-persist-settings') -PassThru
 $window = $null
 try {
     $windowCondition = [System.Windows.Automation.AndCondition]::new(
@@ -285,19 +316,38 @@ try {
             throw "Icon control is too close to the window edge: $($bounds.Left),$($bounds.Top),$($bounds.Right),$($bounds.Bottom)"
         }
     }
-    foreach ($controlId in @('SnapButton', 'PinButton', 'MinimizeButton', 'MaximizeButton', 'CloseButton')) {
+    foreach ($controlId in @('RestartCodexButton', 'ThemeButton', 'SnapButton', 'PinButton', 'MinimizeButton', 'MaximizeButton', 'CloseButton')) {
         $control = $window.FindFirst([System.Windows.Automation.TreeScope]::Descendants,
             [System.Windows.Automation.PropertyCondition]::new([System.Windows.Automation.AutomationElement]::AutomationIdProperty, $controlId))
         if ($null -eq $control) { throw "Title control missing: $controlId" }
         $bounds = $control.Current.BoundingRectangle
         if ($bounds.Width -lt 24 -or $bounds.Left -lt $windowBounds.Left -or $bounds.Right -gt $windowBounds.Right) { throw "Title control clipped: $controlId" }
+        if ([string]::IsNullOrWhiteSpace($control.Current.Name) -or [string]::IsNullOrWhiteSpace($control.Current.HelpText)) { throw "Title control lacks accessible tooltip text: $controlId" }
     }
+    $themeButton = $window.FindFirst([System.Windows.Automation.TreeScope]::Descendants,
+        [System.Windows.Automation.PropertyCondition]::new([System.Windows.Automation.AutomationElement]::AutomationIdProperty, 'ThemeButton'))
+    $initialThemeName = $themeButton.Current.Name
+    foreach ($index in 1..3) {
+        Invoke-NavigationElement -Element $themeButton
+        Start-Sleep -Milliseconds 180
+    }
+    if ($themeButton.Current.Name -ne $initialThemeName) { throw "Theme cycle did not return to its initial state: $initialThemeName -> $($themeButton.Current.Name)" }
+    Write-Output '[OK] Theme button completed a full three-theme cycle without persisting user settings.'
     Save-WindowScreenshot -Window $window -Path (Join-Path $output 'dashboard-printwindow.png')
     Save-WindowScreenshot -Window $window -Path (Join-Path $output 'desktop-glass.png') -Desktop
+    $fiveHourExpiry = $window.FindFirst([System.Windows.Automation.TreeScope]::Descendants,
+        [System.Windows.Automation.PropertyCondition]::new([System.Windows.Automation.AutomationElement]::AutomationIdProperty, 'FiveHourExpiry'))
+    if ($null -eq $fiveHourExpiry) { throw 'Five-hour expiry control is unavailable for tooltip verification.' }
+    $expiryBounds = $fiveHourExpiry.Current.BoundingRectangle
+    [System.Windows.Forms.Cursor]::Position = [System.Drawing.Point]::new([int]($expiryBounds.Left + 8), [int]($expiryBounds.Top + 8))
+    Start-Sleep -Milliseconds 900
+    Save-WindowScreenshot -Window $window -Path (Join-Path $output 'tooltip-glass.png') -Desktop -IncludeTooltipContext
+    [System.Windows.Forms.Cursor]::Position = [System.Drawing.Point]::new(0, 0)
+    Start-Sleep -Milliseconds 500
 
     Invoke-NavigationElement -Element @($settingsRail)[0]
     $refreshIntervalLabel = if ($dashboardLabel -eq 'Dashboard') { 'Refresh interval' } else { '刷新间隔' }
-    $settingsReady = Wait-DescendantByName -Window $window -Name $refreshIntervalLabel -TimeoutMilliseconds 2500
+    $settingsReady = Wait-DescendantByAutomationId -Window $window -AutomationId 'RefreshIntervalComboBox' -TimeoutMilliseconds 2500
     if ($null -eq $settingsReady) {
         Write-Output ("Settings descendants: " + ((Get-DescendantNames -Window $window) -join ' | '))
         throw 'Settings page did not become ready.'
@@ -320,12 +370,12 @@ try {
     Start-Sleep -Milliseconds 3500
     $lockedSettingsBounds = $window.Current.BoundingRectangle
     Invoke-NavigationElement -Element @($dashboardRail)[0]
-    $dashboardReady = Wait-DescendantByName -Window $window -Name 'Codex' -TimeoutMilliseconds 2500
+    $dashboardReady = Wait-DescendantByAutomationId -Window $window -AutomationId 'FiveHourExpiry' -TimeoutMilliseconds 2500
     if ($null -eq $dashboardReady) { throw 'Dashboard did not become ready after returning from settings.' }
     Start-Sleep -Milliseconds 350
     $dashboardBoundsAfterSwitch = $window.Current.BoundingRectangle
     Invoke-NavigationElement -Element @($settingsRail)[0]
-    $settingsReadyAfterLock = Wait-DescendantByName -Window $window -Name $refreshIntervalLabel -TimeoutMilliseconds 2500
+    $settingsReadyAfterLock = Wait-DescendantByAutomationId -Window $window -AutomationId 'RefreshIntervalComboBox' -TimeoutMilliseconds 2500
     if ($null -eq $settingsReadyAfterLock) { throw 'Settings did not become ready after the auto-size lock.' }
     Start-Sleep -Milliseconds 350
     $settingsBoundsAfterSwitch = $window.Current.BoundingRectangle
@@ -333,16 +383,14 @@ try {
         throw "Settings page did not adapt after navigation: $([int]$dashboardBoundsAfterSwitch.Width)x$([int]$dashboardBoundsAfterSwitch.Height) -> $([int]$settingsBoundsAfterSwitch.Width)x$([int]$settingsBoundsAfterSwitch.Height)"
     }
     Invoke-NavigationElement -Element @($dashboardRail)[0]
-    $dashboardReady = Wait-DescendantByName -Window $window -Name 'Codex' -TimeoutMilliseconds 2500
+    $dashboardReady = Wait-DescendantByAutomationId -Window $window -AutomationId 'FiveHourExpiry' -TimeoutMilliseconds 2500
     if ($null -eq $dashboardReady) { throw 'Dashboard did not become ready after adaptive settings check.' }
-    $namesAfterReturn = Get-DescendantNames -Window $window
     $expiryPattern = '^剩余\d+天\d+小时\d+分$|^\d+d \d+h \d+m left$|^已到期$|^Expired$'
-    if (-not ($namesAfterReturn | Where-Object { $_ -match $expiryPattern })) {
+    if ($dashboardReady.Current.Name -notmatch $expiryPattern) {
         throw 'Dashboard is missing the full expiry date and countdown format.'
     }
     foreach ($tooltipId in @('FiveHourExpiry', 'SevenDayExpiry', 'MembershipExpiry')) {
-        $tooltipControl = $window.FindFirst([System.Windows.Automation.TreeScope]::Descendants,
-            [System.Windows.Automation.PropertyCondition]::new([System.Windows.Automation.AutomationElement]::AutomationIdProperty, $tooltipId))
+        $tooltipControl = Wait-DescendantByAutomationId -Window $window -AutomationId $tooltipId -TimeoutMilliseconds 2500
         if ($null -eq $tooltipControl -or [string]::IsNullOrWhiteSpace($tooltipControl.Current.HelpText)) {
             throw "Expiry tooltip missing: $tooltipId"
         }
@@ -369,12 +417,20 @@ try {
         throw "Window resize did not apply: $([int]$beforeResize.Width)x$([int]$beforeResize.Height) -> $([int]$afterResize.Width)x$([int]$afterResize.Height)"
     }
     $transformPattern.Resize($beforeResize.Width, $beforeResize.Height)
-    $transformPattern.Resize(320, 280)
+    $transformPattern.Resize(300, 280)
     Start-Sleep -Milliseconds 300
     $minimumResize = $window.Current.BoundingRectangle
-    if ($minimumResize.Width -lt 320 -or $minimumResize.Height -lt 160) {
+    if ($minimumResize.Width -lt 300 -or $minimumResize.Height -lt 160) {
         throw "Window minimum resize clipped below the adaptive floor: $([int]$minimumResize.Width)x$([int]$minimumResize.Height)"
     }
+    foreach ($controlId in @('RestartCodexButton', 'ThemeButton', 'SnapButton', 'PinButton', 'MinimizeButton', 'MaximizeButton', 'CloseButton')) {
+        $titleControl = $window.FindFirst([System.Windows.Automation.TreeScope]::Descendants,
+            [System.Windows.Automation.PropertyCondition]::new([System.Windows.Automation.AutomationElement]::AutomationIdProperty, $controlId))
+        $titleBounds = $titleControl.Current.BoundingRectangle
+        if ($titleBounds.Left -lt $minimumResize.Left -or $titleBounds.Right -gt $minimumResize.Right) { throw "Title control clipped at the 300px minimum width: $controlId" }
+    }
+    $transformPattern.Resize(320, 280)
+    Start-Sleep -Milliseconds 200
     Save-WindowScreenshot -Window $window -Path (Join-Path $output 'narrow.png')
     $transformPattern.Resize(600, 360)
     # UIA resize returns before WPF paints; wait before capturing the new client area.
@@ -392,11 +448,24 @@ try {
     Invoke-NavigationElement -Element $pin
     Start-Sleep -Milliseconds 200
     if (([UiScreenshotNative]::GetWindowLongPtr([IntPtr]$window.Current.NativeWindowHandle, -20).ToInt64() -band 0x8) -eq 0) { throw 'Pin failed' }
+    $transformPattern.Resize(600, 360)
+    Start-Sleep -Milliseconds 350
+    $beforeSnap = $window.Current.BoundingRectangle
     $snap = $window.FindFirst([System.Windows.Automation.TreeScope]::Descendants,
         [System.Windows.Automation.PropertyCondition]::new([System.Windows.Automation.AutomationElement]::AutomationIdProperty, 'SnapButton'))
     Invoke-NavigationElement -Element $snap
-    Start-Sleep -Milliseconds 250
+    Start-Sleep -Milliseconds 450
     $snappedBounds = $window.Current.BoundingRectangle
+    if ($snappedBounds.Width -ge ($beforeSnap.Width - 30) -or $snappedBounds.Height -ge ($beforeSnap.Height - 30)) {
+        throw "Snap-to-corner did not restore a content-fit size: $beforeSnap -> $snappedBounds"
+    }
+    if ($snappedBounds.Width -gt 440 -or $snappedBounds.Height -gt 330) {
+        throw "Snap-to-corner content-fit size is unexpectedly large: $snappedBounds"
+    }
+    $visibleScrollBars = @($window.FindAll([System.Windows.Automation.TreeScope]::Descendants,
+        [System.Windows.Automation.PropertyCondition]::new([System.Windows.Automation.AutomationElement]::ControlTypeProperty, [System.Windows.Automation.ControlType]::ScrollBar)) |
+        Where-Object { -not $_.Current.IsOffscreen -and $_.Current.BoundingRectangle.Width -gt 0 -and $_.Current.BoundingRectangle.Height -gt 0 })
+    if ($visibleScrollBars.Count -gt 0) { throw 'Snap-to-corner content-fit mode left a visible scrollbar.' }
     $snapWorkArea = [System.Windows.Forms.Screen]::FromHandle([IntPtr]$window.Current.NativeWindowHandle).WorkingArea
     $snapGap = @(
         [Math]::Abs($snappedBounds.Left - ($snapWorkArea.Left + 2)),
@@ -417,7 +486,7 @@ try {
     Start-Sleep -Milliseconds 350
     if ($windowPattern.Current.WindowVisualState -ne [System.Windows.Automation.WindowVisualState]::Normal) { throw 'Restore failed' }
     $restoredBounds = $window.Current.BoundingRectangle
-    if ([Math]::Abs($restoredBounds.Width - $beforeResize.Width) -gt 2 -or [Math]::Abs($restoredBounds.Height - $beforeResize.Height) -gt 2) { throw 'Restore lost the original window size' }
+    if ([Math]::Abs($restoredBounds.Width - $snappedBounds.Width) -gt 2 -or [Math]::Abs($restoredBounds.Height - $snappedBounds.Height) -gt 2) { throw 'Restore lost the snapped content-fit window size' }
     $minimize = $window.FindFirst([System.Windows.Automation.TreeScope]::Descendants,
         [System.Windows.Automation.PropertyCondition]::new([System.Windows.Automation.AutomationElement]::AutomationIdProperty, 'MinimizeButton'))
     Invoke-NavigationElement -Element $minimize

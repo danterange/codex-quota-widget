@@ -73,6 +73,33 @@ internal static class WindowWorkArea
         window.Top = nearest.Y;
     }
 
+    /// <summary>将已测量的窗口尺寸限制在当前显示器工作区内，防止贴边前的内容测量跨过任务栏或扩展屏边界。</summary>
+    internal static void ClampSizeToCurrentWorkArea(Window window, double gap)
+    {
+        if (window.WindowState != WindowState.Normal || window.ActualWidth <= 0 || window.ActualHeight <= 0)
+        {
+            return;
+        }
+
+        var handle = new WindowInteropHelper(window).Handle;
+        var monitor = MonitorFromWindow(handle, MonitorDefaultToNearest);
+        var info = new MonitorInfo { Size = Marshal.SizeOf<MonitorInfo>() };
+        if (!GetMonitorInfo(monitor, ref info))
+        {
+            return;
+        }
+
+        var transform = PresentationSource.FromVisual(window)?.CompositionTarget?.TransformFromDevice ?? Matrix.Identity;
+        var workTopLeft = transform.Transform(new WpfPoint(info.Work.Left, info.Work.Top));
+        var workBottomRight = transform.Transform(new WpfPoint(info.Work.Right, info.Work.Bottom));
+        var workArea = new Rect(workTopLeft, workBottomRight);
+        var safeGap = Math.Max(0, gap);
+        var maximumWidth = Math.Max(window.MinWidth, workArea.Width - safeGap * 2);
+        var maximumHeight = Math.Max(window.MinHeight, workArea.Height - safeGap * 2);
+        window.Width = Math.Min(window.Width, maximumWidth);
+        window.Height = Math.Min(window.Height, maximumHeight);
+    }
+
     [StructLayout(LayoutKind.Sequential)]
     private struct NativePoint { public int X, Y; }
     [StructLayout(LayoutKind.Sequential)]

@@ -1,0 +1,62 @@
+{
+  "desktop": {
+    "available": true,
+    "package_full_name": "OpenAI.Codex_SIMULATED",
+    "package_family_name": "OpenAI.Codex_SIMULATED",
+    "install_location": "C:\\Simulated\\OpenAI.Codex",
+    "executable_path": "C:\\Simulated\\OpenAI.Codex\\app\\ChatGPT.exe",
+    "aumid": "OpenAI.Codex_SIMULATED!App",
+    "reason": null
+  },
+  "captured_processes": [
+    {
+      "pid": 1001,
+      "parent_pid": 0,
+      "creation_key": "SIMULATED-ROOT",
+      "executable_path": "C:\\Simulated\\OpenAI.Codex\\app\\ChatGPT.exe",
+      "name": "ChatGPT.exe",
+      "depth": 0,
+      "is_root": true,
+      "trusted_package_process": true,
+      "force_eligible": true
+    },
+    {
+      "pid": 1002,
+      "parent_pid": 1001,
+      "creation_key": "SIMULATED-PACKAGE-HELPER",
+      "executable_path": "C:\\Simulated\\OpenAI.Codex\\app\\helper.exe",
+      "name": "helper.exe",
+      "depth": 1,
+      "is_root": false,
+      "trusted_package_process": true,
+      "force_eligible": true
+    },
+    {
+      "pid": 1003,
+      "parent_pid": 1001,
+      "creation_key": "SIMULATED-PROTECTED-SHELL",
+      "executable_path": "C:\\Windows\\System32\\cmd.exe",
+      "name": "cmd.exe",
+      "depth": 1,
+      "is_root": false,
+      "trusted_package_process": false,
+      "force_eligible": false
+    }
+  ],
+  "session_snapshot": {
+    "available": true,
+    "observed_at": "2026-10-12T00:00:00.0000000Z",
+    "source": "fixture",
+    "active_thread_candidates": [
+      {
+        "thread_id": "11111111-1111-1111-1111-111111111111",
+        "observed_at": "2026-10-12T00:00:00.0000000Z",
+        "writer_lock_present": true,
+        "recovery_status": "interrupted_requires_manual_resume"
+      }
+    ],
+    "limitations": [
+      "simulation fixture"
+    ]
+  }
+}

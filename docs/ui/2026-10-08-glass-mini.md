@@ -79,3 +79,30 @@ powershell.exe -NoLogo -NoProfile -ExecutionPolicy Bypass -File scripts/Test-UiS
 材质使用微软公开 API：[DWM_SYSTEMBACKDROP_TYPE](https://learn.microsoft.com/en-us/windows/win32/api/dwmapi/ne-dwmapi-dwm_systembackdrop_type)。不使用未经公开支持的 Accent API。视觉自评约 8.5/10，属主观评价，不替代用户验收。
 
 首次交付为本地编译版本，用户随后确认视觉效果，并授权按更新后的 AGENTS.md 自动审查、提交、推送与发布 v0.1.6。该授权不包含覆盖本地安装，安装目录保持不变。
+
+## 2026-10-12 主题、贴角与重启二次迭代
+
+### 视觉和交互决策
+
+| 项目 | 落地方案 | 设计理由 |
+| --- | --- | --- |
+| 主题 | 夜间默认 → 白天 → 玻璃的三态循环；语义色令牌动态替换 | 避免 WPF 冻结静态画刷导致“按钮显示切换、卡片仍是旧颜色”的半切换状态。夜间用于长期常驻，白天提高浅色桌面上的对比度，玻璃强化 DWM Acrylic 的通透感。 |
+| 背景 | Windows 11 使用 DWM Acrylic；旧系统和高对比度改用不透明语义色 | 不启用 `AllowsTransparency`，避免 WPF 软件渲染、窗口拖动卡顿和文字透明。 |
+| 标题栏 | 重启 Desktop、主题、贴角、置顶、最小化、最大化/还原、关闭 | 所有图标保留 28 DIP 命中区域，标题文本允许截断而控制按钮不裁切；每个无文字图标有 Name/HelpText/ToolTip。 |
+| 贴角 | 先用 `SizeToContent.WidthAndHeight` 重新测量，再限制到所在显示器工作区，最后按最近角落贴边 | 显式“贴角”代表用户希望恢复最优小组件尺寸，因此覆盖之前的手动放大；普通自由缩放仍被保留。 |
+| 优雅重启 | 打包 PowerShell 7 监督器，精确锁定 OpenAI.Codex MSIX 路径、PID 和创建时间 | 不按 `ChatGPT.exe`/`codex*` 模糊匹配，不影响 CLI；快照只记录 writer-lock UUID，未完成流式回合一律要求用户手动继续。正常关闭超时后，必须第二次点击并确认才会强制结束精确包进程。 |
+
+主题设计遵循高密度桌面仪表盘的 4/8 DIP 间距节奏、统一 1.5 DIP 线框图标和语义化颜色。日间与夜间均以动态资源更新文字、边框、卡片、控件状态和 ToolTip；高对比度启动时使用 Windows 系统色。
+
+### 本轮验证
+
+```powershell
+dotnet build .\CodexQuotaWidget.csproj -c Release --no-restore
+dotnet run --project .\tests\QuotaChecks\QuotaChecks.csproj -c Release
+dotnet run --project .\tests\QuotaChecks\QuotaChecks.csproj -c Release -- --window-shell --demo
+pwsh -NoLogo -NoProfile -ExecutionPolicy Bypass -File .\scripts\Test-UiScreenshot.ps1
+pwsh -NoLogo -NoProfile -NonInteractive -File .\restart\Restart-CodexDesktop.ps1 -Mode Simulate -Execute
+pwsh -NoLogo -NoProfile -NonInteractive -File .\restart\Restart-CodexDesktop.ps1 -Mode Desktop
+```
+
+验证覆盖夜间、白天、玻璃三张渲染截图，玻璃主题的真实桌面截图，标题栏 7 个按钮不裁切、所有标题按钮的辅助说明、主题循环、自由缩放、贴角后自动回到紧凑尺寸且无滚动条，以及重启监督器的隔离模拟。Desktop dry-run 只读检查 CLI、MSIX 和缓存登录，不会关闭或启动 Desktop。

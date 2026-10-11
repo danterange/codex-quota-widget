@@ -20,6 +20,8 @@ public partial class MainWindow : Window
 {
     private readonly QuotaViewModel viewModel;
     private readonly Action<WidgetSettings> saveSettings;
+    private readonly CodexDesktopRestartService restartService = new();
+    private readonly CancellationTokenSource restartLifetime = new();
     private WidgetSettings settings;
     private bool applyingControls;
     private bool exitRequested;
@@ -29,9 +31,13 @@ public partial class MainWindow : Window
     private bool autoSizingLocked;
     private bool userResized;
     private bool suppressUserResizeTracking;
+    private bool backdropAvailable;
+    private bool restartInProgress;
+    private bool forceRestartArmed;
     private int captureAttempts;
     private DispatcherTimer? captureRetryTimer;
     private DispatcherTimer? autoSizingFallbackTimer;
+    private DispatcherTimer? restartNoticeTimer;
 
     /// <summary>初始化数据绑定和设置控件，避免首次显示时触发无意义的保存事件，并识别发布验收的正常退出参数。</summary>
     internal MainWindow(WidgetSettings initialSettings, Action<WidgetSettings> saveSettingsCallback)
@@ -39,6 +45,7 @@ public partial class MainWindow : Window
         InitializeComponent();
         settings = initialSettings;
         saveSettings = saveSettingsCallback;
+        WidgetThemePalette.Apply(settings.Theme);
         exitOnClose = Environment.GetCommandLineArgs().Any(argument =>
             string.Equals(argument, "--exit-on-close", StringComparison.OrdinalIgnoreCase));
         captureScreenshotPath = Environment.GetCommandLineArgs()
@@ -64,6 +71,134 @@ public partial class MainWindow : Window
     private async void RefreshClicked(object sender, RoutedEventArgs e)
     {
         await viewModel.RefreshNowAsync();
+    }
+
+    /// <summary>从小组件发起桌面端专用重启；首次只请求正常关闭，超时后必须由第二次点击和对话框明确确认才允许精确强制结束。</summary>
+    private async void RestartCodexClicked(object sender, RoutedEventArgs e)
+    {
+        if (restartInProgress)
+        {
+            return;
+        }
+
+        var forceAfterTimeout = forceRestartArmed;
+        if (forceAfterTimeout && !ConfirmForceRestart())
+        {
+            return;
+        }
+
+        forceRestartArmed = false;
+        restartInProgress = true;
+        RestartCodexButton.IsEnabled = false;
+        RestartCodexButton.ToolTip = viewModel.Text.RestartCodexPreparing;
+        SettingsStatusTextBlock.Text = viewModel.Text.RestartCodexPreparing;
+        SettingsStatusTextBlock.ToolTip = viewModel.Text.RestartCodexPreparing;
+        ShowRestartNotice(viewModel.Text.RestartCodexPreparing, "AccentBrush");
+        try
+        {
+            var result = await restartService.RestartAsync(restartLifetime.Token, forceAfterTimeout);
+            forceRestartArmed = result == CodexDesktopRestartResult.NeedsManualClose;
+            var message = GetRestartResultMessage(result);
+            SettingsStatusTextBlock.Text = message;
+            SettingsStatusTextBlock.ToolTip = message;
+            var icon = result is CodexDesktopRestartResult.Relaunched or CodexDesktopRestartResult.LoginRequired
+                ? System.Windows.Forms.ToolTipIcon.Info
+                : System.Windows.Forms.ToolTipIcon.Warning;
+            ShowRestartNotice(message, icon == System.Windows.Forms.ToolTipIcon.Info ? "SuccessBrush" : "QuotaRedBrush", TimeSpan.FromSeconds(7));
+            (System.Windows.Application.Current as App)?.ShowNotification(viewModel.Text.RestartCodex, message, icon);
+        }
+        finally
+        {
+            restartInProgress = false;
+            RestartCodexButton.IsEnabled = !restartLifetime.IsCancellationRequested;
+            UpdateRestartButtonPresentation();
+        }
+    }
+
+    /// <summary>在正常关闭超时后要求用户再次确认精确强制关闭，避免一次普通图标点击意外丢弃未保存的 Desktop 内容。</summary>
+    private bool ConfirmForceRestart()
+    {
+        return System.Windows.MessageBox.Show(
+                   this,
+                   viewModel.Text.RestartCodexForceConfirmation,
+                   viewModel.Text.RestartCodexForceConfirmationTitle,
+                   System.Windows.MessageBoxButton.YesNo,
+                   System.Windows.MessageBoxImage.Warning,
+                   System.Windows.MessageBoxResult.No)
+               == System.Windows.MessageBoxResult.Yes;
+    }
+
+    /// <summary>根据是否已获得强制关闭资格更新重启按钮说明，使下一次点击的副作用在鼠标悬停和辅助技术中可见。</summary>
+    private void UpdateRestartButtonPresentation()
+    {
+        if (RestartCodexButton is null || viewModel is null)
+        {
+            return;
+        }
+
+        var tooltip = forceRestartArmed ? viewModel.Text.RestartCodexNeedsManualClose : viewModel.Text.RestartCodexTooltip;
+        RestartCodexButton.ToolTip = tooltip;
+        System.Windows.Automation.AutomationProperties.SetHelpText(RestartCodexButton, tooltip);
+    }
+
+    /// <summary>在公共状态行显示重启进度或结果，使用户即使停留在额度页也能看到安全操作正在发生。</summary>
+    private void ShowRestartNotice(string message, string foregroundResourceKey, TimeSpan? clearAfter = null)
+    {
+        StopRestartNoticeTimer();
+        ConnectionStatusPanel.Visibility = Visibility.Collapsed;
+        RestartNoticeTextBlock.Text = message;
+        RestartNoticeTextBlock.ToolTip = message;
+        RestartNoticeTextBlock.SetResourceReference(TextBlock.ForegroundProperty, foregroundResourceKey);
+        RestartNoticeTextBlock.Visibility = Visibility.Visible;
+        if (clearAfter is { } delay)
+        {
+            restartNoticeTimer = new DispatcherTimer { Interval = delay };
+            restartNoticeTimer.Tick += RestartNoticeTimerTick;
+            restartNoticeTimer.Start();
+        }
+    }
+
+    /// <summary>在短暂结果提示结束后恢复实时连接状态，避免重启结果长期覆盖额度读取状态。</summary>
+    private void RestartNoticeTimerTick(object? sender, EventArgs e)
+    {
+        ClearRestartNotice();
+    }
+
+    /// <summary>停止一次性提示计时器并恢复原有绑定的连接状态区域，窗口关闭时也可安全重复调用。</summary>
+    private void ClearRestartNotice()
+    {
+        StopRestartNoticeTimer();
+        RestartNoticeTextBlock.Visibility = Visibility.Collapsed;
+        RestartNoticeTextBlock.Text = string.Empty;
+        RestartNoticeTextBlock.ToolTip = null;
+        ConnectionStatusPanel.Visibility = Visibility.Visible;
+    }
+
+    /// <summary>解除提示计时器事件，防止连续重启操作保留多个计时器或在窗口销毁后更新控件。</summary>
+    private void StopRestartNoticeTimer()
+    {
+        if (restartNoticeTimer is null)
+        {
+            return;
+        }
+
+        restartNoticeTimer.Stop();
+        restartNoticeTimer.Tick -= RestartNoticeTimerTick;
+        restartNoticeTimer = null;
+    }
+
+    /// <summary>将安全助手的内部状态映射为准确的本地化提示，成功只表示桌面端重启且恢复清单就绪，不表示流式会话已恢复。</summary>
+    private string GetRestartResultMessage(CodexDesktopRestartResult result)
+    {
+        return result switch
+        {
+            CodexDesktopRestartResult.Relaunched => viewModel.Text.RestartCodexReady,
+            CodexDesktopRestartResult.LoginRequired => viewModel.Text.RestartCodexLoginRequired,
+            CodexDesktopRestartResult.NeedsManualClose => viewModel.Text.RestartCodexNeedsManualClose,
+            CodexDesktopRestartResult.SnapshotUnavailable => viewModel.Text.RestartCodexSnapshotUnavailable,
+            CodexDesktopRestartResult.TimedOut => viewModel.Text.RestartCodexTimedOut,
+            _ => viewModel.Text.RestartCodexUnavailable
+        };
     }
 
     /// <summary>切换到额度概览页；图标导航保留 RadioButton 的键盘和屏幕阅读器语义。</summary>
@@ -135,12 +270,60 @@ public partial class MainWindow : Window
         }
     }
 
-    /// <summary>原生句柄就绪后开启背景模糊；不支持的系统使用不透明渐变，保证文字可读。</summary>
+    /// <summary>原生句柄就绪后开启背景模糊并应用已保存主题；不支持的系统使用同配色的实色渐变。</summary>
     private void WindowSourceInitialized(object? sender, EventArgs e)
     {
         WindowWorkArea.Attach(new System.Windows.Interop.WindowInteropHelper(this).Handle);
         var forceOpaque = Environment.GetCommandLineArgs().Contains("--opaque");
-        GlassSurface.Background = (System.Windows.Media.Brush)FindResource(!forceOpaque && WindowBackdrop.TryEnable(this) ? "GlassBrush" : "OpaqueGlassBrush");
+        backdropAvailable = !forceOpaque && WindowBackdrop.TryEnable(this, WidgetThemePalette.UsesDarkCaption(settings.Theme));
+        ApplyThemeSurface();
+    }
+
+    /// <summary>循环夜间、白天和高透明玻璃主题，并立即保存用户选择以便下次启动保持同一外观。</summary>
+    private void ThemeClicked(object sender, RoutedEventArgs e)
+    {
+        settings = settings with
+        {
+            Theme = settings.Theme switch
+            {
+                WidgetTheme.Night => WidgetTheme.Day,
+                WidgetTheme.Day => WidgetTheme.Glass,
+                _ => WidgetTheme.Night
+            }
+        };
+        PersistSettings();
+        ApplyThemeSurface();
+    }
+
+    /// <summary>同步主题资源、DWM 标题栏提示与主题按钮的文字说明，确保主题切换不依赖重新创建窗口。</summary>
+    private void ApplyThemeSurface()
+    {
+        WidgetThemePalette.Apply(settings.Theme);
+        viewModel.RefreshThemeBrushes();
+        GlassSurface.Background = (System.Windows.Media.Brush)FindResource(WidgetThemePalette.GetSurfaceResourceKey(backdropAvailable));
+        WindowBackdrop.ApplyCaptionTheme(this, WidgetThemePalette.UsesDarkCaption(settings.Theme));
+        UpdateThemeButtonPresentation();
+        UpdateRestartButtonPresentation();
+    }
+
+    /// <summary>用当前主题名称和“下一次点击的效果”更新无文字图标的悬浮提示及辅助功能名称。</summary>
+    private void UpdateThemeButtonPresentation()
+    {
+        if (ThemeButton is null || ThemeGlyph is null || viewModel is null)
+        {
+            return;
+        }
+
+        var (name, tooltip, glyph) = settings.Theme switch
+        {
+            WidgetTheme.Day => (viewModel.Text.ThemeDay, viewModel.Text.ThemeDayTooltip, "M12,3 A9,9 0 1 0 21,12 A7,7 0 0 1 12,3 M12,1 V3 M12,21 V23 M1,12 H3 M21,12 H23"),
+            WidgetTheme.Glass => (viewModel.Text.ThemeGlass, viewModel.Text.ThemeGlassTooltip, "M4,12 C4,7 8,4 12,4 C16,4 20,7 20,12 C20,17 16,20 12,20 C8,20 4,17 4,12 M7,12 H17 M12,7 V17"),
+            _ => (viewModel.Text.ThemeNight, viewModel.Text.ThemeNightTooltip, "M15,3 A9,9 0 1 0 21,15 A7,7 0 0 1 15,3")
+        };
+        ThemeGlyph.Data = Geometry.Parse(glyph);
+        ThemeButton.ToolTip = tooltip;
+        System.Windows.Automation.AutomationProperties.SetName(ThemeButton, name);
+        System.Windows.Automation.AutomationProperties.SetHelpText(ThemeButton, tooltip);
     }
 
     /// <summary>切换当前会话置顶状态；高亮按钮与实际 Topmost 属性绑定，避免状态不一致。</summary>
@@ -149,10 +332,42 @@ public partial class MainWindow : Window
         Topmost = !Topmost;
     }
 
-    /// <summary>将窗口吸附到当前显示器上离当前位置最近的角落，并在工作区边缘保留两像素间距。</summary>
+    /// <summary>将窗口按当前内容恢复为紧凑大小后，吸附到最近角落并在工作区边缘保留两像素间距。</summary>
     private void SnapClicked(object sender, RoutedEventArgs e)
     {
+        FitContentForSnap();
         WindowWorkArea.SnapToNearestCorner(this, 2);
+    }
+
+    /// <summary>显式贴边操作覆盖用户的手动窗口大小，按当前页面测量可容纳全部内容的尺寸，避免滚动条和大块空白并存。</summary>
+    private void FitContentForSnap()
+    {
+        if (!IsLoaded || WindowState != WindowState.Normal)
+        {
+            return;
+        }
+
+        suppressUserResizeTracking = true;
+        var originalScrollMode = ContentScrollViewer.VerticalScrollBarVisibility;
+        try
+        {
+            // 贴角是用户明确要求的“恢复最优大小”，因此应撤销此前拖拽尺寸的优先级。
+            userResized = false;
+            ContentScrollViewer.VerticalScrollBarVisibility = ScrollBarVisibility.Disabled;
+            SizeToContent = SizeToContent.WidthAndHeight;
+            UpdateLayout();
+            var fittedWidth = Math.Max(MinWidth, Math.Ceiling(ActualWidth));
+            var fittedHeight = Math.Max(MinHeight, Math.Ceiling(ActualHeight));
+            SizeToContent = SizeToContent.Manual;
+            Width = fittedWidth;
+            Height = fittedHeight;
+            WindowWorkArea.ClampSizeToCurrentWorkArea(this, 2);
+        }
+        finally
+        {
+            ContentScrollViewer.VerticalScrollBarVisibility = originalScrollMode;
+            suppressUserResizeTracking = false;
+        }
     }
 
     /// <summary>先锁定当前尺寸再最小化，避免启动异步读取在后台改写还原尺寸。</summary>
@@ -212,6 +427,8 @@ public partial class MainWindow : Window
         settings = settings with { Language = language };
         PersistSettings();
         WindowStateChanged(this, EventArgs.Empty);
+        UpdateThemeButtonPresentation();
+        UpdateRestartButtonPresentation();
     }
 
     /// <summary>将已保存设置同步回控件，避免语言切换或启动状态更新时触发递归保存。</summary>
@@ -237,6 +454,7 @@ public partial class MainWindow : Window
         viewModel.ApplySettings(settings);
         saveSettings(settings);
         SettingsStatusTextBlock.Text = viewModel.Text.SettingsSaved;
+        SettingsStatusTextBlock.ToolTip = viewModel.Text.SettingsSaved;
     }
 
     /// <summary>选择 Tag 匹配的下拉项，避免依赖中英文显示文本而导致设置恢复失败。</summary>
@@ -408,6 +626,9 @@ public partial class MainWindow : Window
         viewModel.PropertyChanged -= ViewModelPropertyChanged;
         captureRetryTimer?.Stop();
         autoSizingFallbackTimer?.Stop();
+        StopRestartNoticeTimer();
+        restartLifetime.Cancel();
+        restartLifetime.Dispose();
         viewModel.Dispose();
         if (exitOnClose)
         {
