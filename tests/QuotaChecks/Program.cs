@@ -177,6 +177,10 @@ internal static class Program
             Check(viewModel.RemainingCreditsVisibility == Visibility.Visible && viewModel.RemainingCreditsText == "61,986"
                 && viewModel.ResetCreditsText == "2", "剩余额度与重置券分开显示");
             Check(viewModel.MembershipVisibility == Visibility.Collapsed && viewModel.HasDisplayableData, "Free 套餐隐藏会员未知行并保留有效数据");
+            Check(viewModel.EarliestRecoveryText.StartsWith("下次恢复", StringComparison.Ordinal)
+                && viewModel.LastUpdatedText == "刚刚更新"
+                && viewModel.ResetCreditsDisplayText.Contains("最早重置券到期", StringComparison.Ordinal),
+                "Free 显示最早恢复、成功更新时间和重置券到期提示");
             Check(QuotaViewModel.GetQuotaTone(0) == "Red" && QuotaViewModel.GetQuotaTone(100) == "Green", "额度颜色按已使用程度映射");
         }
         finally
@@ -267,6 +271,7 @@ internal static class Program
             Environment.SetEnvironmentVariable("QUOTA_CHECK_MODE", "success");
             var snapshot = await provider.GetSnapshotAsync(CancellationToken.None);
             Check(snapshot.FiveHour is null && snapshot.SevenDay?.Percent == 45 && snapshot.ResetCredits == 2
+                && snapshot.EarliestResetCreditExpiresAt == DateTimeOffset.FromUnixTimeSeconds(1893457000).ToLocalTime()
                 && snapshot.MembershipExpiresAt == DateTimeOffset.FromUnixTimeSeconds(1893456000).ToLocalTime(),
                 "严格握手、自动会员到期、仅周额度和重置次数");
             Environment.SetEnvironmentVariable("QUOTA_CHECK_MODE", "free");
@@ -274,7 +279,8 @@ internal static class Program
             Check(freeSnapshot.PlanName == "free" && freeSnapshot.Monthly?.Percent == 0
                 && freeSnapshot.RemainingCredits == 61_986m && !freeSnapshot.CreditsUnlimited
                 && freeSnapshot.FiveHour is null && freeSnapshot.SevenDay is null && freeSnapshot.MembershipExpiresAt is null
-                && freeSnapshot.ResetCredits == 2,
+                && freeSnapshot.ResetCredits == 2
+                && freeSnapshot.EarliestResetCreditExpiresAt == DateTimeOffset.FromUnixTimeSeconds(1893457000).ToLocalTime(),
                 "Free 月度额度、剩余额度与重置券独立解析");
             Environment.SetEnvironmentVariable("QUOTA_CHECK_MODE", "free-zero");
             var freeZeroSnapshot = await provider.GetSnapshotAsync(CancellationToken.None);
@@ -409,12 +415,12 @@ internal static class Program
                 await Console.Out.WriteLineAsync(mode == "unauthorized"
                     ? """{"id":3,"error":{"message":"401 unauthorized private-marker"}}"""
                     : mode == "free"
-                    ? """{"id":3,"result":{"rateLimits":{"primary":{"usedPercent":100,"windowDurationMins":43200,"resetsAt":1893456000},"secondary":null,"credits":{"hasCredits":true,"unlimited":false,"balance":"61986"}},"rateLimitResetCredits":{"availableCount":2}}}"""
+                    ? """{"id":3,"result":{"rateLimits":{"primary":{"usedPercent":100,"windowDurationMins":43200,"resetsAt":1893456000},"secondary":null,"credits":{"hasCredits":true,"unlimited":false,"balance":"61986"}},"rateLimitResetCredits":{"availableCount":2,"credits":[{"status":"available","expiresAt":1893458000},{"status":"available","expiresAt":1893457000}]}}}"""
                     : mode == "free-zero"
                     ? """{"id":3,"result":{"rateLimits":{"primary":{"usedPercent":100,"windowDurationMins":43200,"resetsAt":1893456000},"secondary":null,"credits":{"hasCredits":true,"unlimited":false,"balance":"0"}}}}"""
                     : mode == "free-unlimited"
                     ? """{"id":3,"result":{"rateLimits":{"primary":{"usedPercent":0,"windowDurationMins":43200,"resetsAt":1893456000},"secondary":null,"credits":{"hasCredits":true,"unlimited":true}}}}"""
-                    : """{"id":3,"result":{"rateLimits":{"primary":{"usedPercent":55,"windowDurationMins":10080,"resetsAt":1893456000},"secondary":null},"rateLimitResetCredits":{"availableCount":2}}}""");
+                    : """{"id":3,"result":{"rateLimits":{"primary":{"usedPercent":55,"windowDurationMins":10080,"resetsAt":1893456000},"secondary":null},"rateLimitResetCredits":{"availableCount":2,"credits":[{"status":"available","expiresAt":1893458000},{"status":"available","expiresAt":1893457000}]}}}""");
             }
             await Console.Out.FlushAsync();
         }
@@ -453,7 +459,8 @@ internal static class Program
             return Task.FromResult(new QuotaSnapshot("free", "free", null, null, null, 2)
             {
                 Monthly          = new QuotaWindow("month", 0, DateTimeOffset.Now.AddDays(29)),
-                RemainingCredits = 61_986m
+                RemainingCredits = 61_986m,
+                EarliestResetCreditExpiresAt = DateTimeOffset.Now.AddDays(19)
             });
         }
     }

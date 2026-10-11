@@ -35,11 +35,16 @@ public sealed class DemoQuotaProvider : IQuotaProvider
             {
                 AccountKey       = "demo-free",
                 Monthly          = new QuotaWindow("month", 0, now.AddDays(29).AddHours(3)),
-                RemainingCredits = 61_986m
+                RemainingCredits = 61_986m,
+                EarliestResetCreditExpiresAt = now.AddDays(19)
             });
         }
 
-        return Task.FromResult(new QuotaSnapshot("demo", "Pro", new QuotaWindow("5h", 42, now.AddHours(1).AddMinutes(26)), new QuotaWindow("7d", 68, now.AddDays(4).AddHours(8)), new DateTimeOffset(now.Year, 10, 12, 23, 59, 0, now.Offset), 1) { AccountKey = "demo" });
+        return Task.FromResult(new QuotaSnapshot("demo", "Pro", new QuotaWindow("5h", 42, now.AddHours(1).AddMinutes(26)), new QuotaWindow("7d", 68, now.AddDays(4).AddHours(8)), new DateTimeOffset(now.Year, 10, 12, 23, 59, 0, now.Offset), 1)
+        {
+            AccountKey                  = "demo",
+            EarliestResetCreditExpiresAt = now.AddDays(18)
+        });
     }
 }
 
@@ -176,6 +181,7 @@ public sealed class CodexQuotaProvider : IQuotaProvider
         AddWindows(limitsResponse, windows);
         var (remainingCredits, creditsUnlimited) = FindCredits(limitsResponse);
         var resetCredits = limitsResponse.TryGetProperty("rateLimitResetCredits", out var credits) && credits.ValueKind == JsonValueKind.Object && credits.TryGetProperty("availableCount", out var count) ? count.GetInt32() : (int?)null;
+        var earliestResetCreditExpiry = FindEarliestResetCreditExpiry(limitsResponse);
         // Free 没有订阅有效期；避免本机遗留认证声明把 Free 账户误显示为付费会员。
         // 其他 ChatGPT 套餐才在 app-server 缺失字段时从同一登录令牌补齐。
         var membershipExpiresAt = string.Equals(plan, "free", StringComparison.OrdinalIgnoreCase)
@@ -186,7 +192,8 @@ public sealed class CodexQuotaProvider : IQuotaProvider
             AccountKey       = accountId ?? accountLabel,
             Monthly          = windows.Find(window => window.Label == "month"),
             RemainingCredits = remainingCredits,
-            CreditsUnlimited = creditsUnlimited
+            CreditsUnlimited = creditsUnlimited,
+            EarliestResetCreditExpiresAt = earliestResetCreditExpiry
         };
     }
 
@@ -262,6 +269,41 @@ public sealed class CodexQuotaProvider : IQuotaProvider
 
         return value.ValueKind == JsonValueKind.String
             && decimal.TryParse(value.GetString(), NumberStyles.Number, CultureInfo.InvariantCulture, out parsed);
+    }
+
+    /// <summary>从可用重置券中选择最早到期项，用于提醒但不暴露券标识或执行任何重置操作。</summary>
+    private static DateTimeOffset? FindEarliestResetCreditExpiry(JsonElement response)
+    {
+        if (!response.TryGetProperty("rateLimitResetCredits", out var resetCredits)
+            || resetCredits.ValueKind != JsonValueKind.Object
+            || !resetCredits.TryGetProperty("credits", out var credits)
+            || credits.ValueKind != JsonValueKind.Array)
+        {
+            return null;
+        }
+
+        DateTimeOffset? earliest = null;
+        foreach (var credit in credits.EnumerateArray())
+        {
+            if (credit.ValueKind != JsonValueKind.Object
+                || credit.TryGetProperty("status", out var status) && !string.Equals(status.GetString(), "available", StringComparison.OrdinalIgnoreCase)
+                || !credit.TryGetProperty("expiresAt", out var expiresAt))
+            {
+                continue;
+            }
+
+            var expiry = expiresAt.ValueKind == JsonValueKind.Number && expiresAt.TryGetInt64(out var unixTimestamp)
+                ? ParseUnixTimestamp(unixTimestamp)
+                : expiresAt.ValueKind == JsonValueKind.String && DateTimeOffset.TryParse(expiresAt.GetString(), out var parsed)
+                    ? parsed.ToLocalTime()
+                    : null;
+            if (expiry is { } value && (earliest is null || value < earliest))
+            {
+                earliest = value;
+            }
+        }
+
+        return earliest;
     }
 
     /// <summary>

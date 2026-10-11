@@ -42,7 +42,7 @@
                     <TextBlock Text="{Binding ConnectionText}" Foreground="{StaticResource SecondaryTextBrush}" VerticalAlignment="Center" FontSize="11" />
                 </StackPanel>
                 <StackPanel Grid.Column="1" Orientation="Horizontal">
-                    <TextBlock Text="{Binding ResetCreditsText, StringFormat=↻ {0}}" Visibility="{Binding ResetCreditsVisibility}" ToolTip="{Binding ResetCreditsDisplayText}" Foreground="{StaticResource SuccessBrush}" VerticalAlignment="Center" Margin="0,0,8,0" />
+                    <TextBlock Text="{Binding ResetCreditsText, StringFormat=↻ {0}}" AutomationProperties.AutomationId="ResetCredits" AutomationProperties.Name="{Binding ResetCreditsText}" AutomationProperties.HelpText="{Binding ResetCreditsDisplayText}" Visibility="{Binding ResetCreditsVisibility}" ToolTip="{Binding ResetCreditsDisplayText}" Foreground="{StaticResource SuccessBrush}" VerticalAlignment="Center" Margin="0,0,8,0" />
                     <RadioButton x:Name="DashboardRailButton" IsChecked="True" GroupName="Page" Style="{StaticResource GlassTab}" AutomationProperties.Name="{Binding Text.DashboardTab}" ToolTip="{Binding Text.DashboardTab}" Checked="DashboardRailChecked"><Path Style="{StaticResource LineIcon}" Data="M4,4 H10 V10 H4 Z M14,4 H20 V10 H14 Z M4,14 H10 V20 H4 Z M14,14 H20 V20 H14 Z" /></RadioButton>
                     <RadioButton x:Name="SettingsRailButton" GroupName="Page" Style="{StaticResource GlassTab}" AutomationProperties.Name="{Binding Text.SettingsTab}" ToolTip="{Binding Text.SettingsTab}" Checked="SettingsRailChecked"><Path Style="{StaticResource LineIcon}" Data="M4,7 H20 M4,17 H20 M8,4 V10 M16,14 V20" /></RadioButton>
                     <Button x:Name="RailRefreshButton" Style="{StaticResource GlassButton}" ToolTip="{Binding Text.RefreshNow}" AutomationProperties.Name="{Binding Text.RefreshNow}" Click="RefreshClicked" IsEnabled="{Binding CanRefresh}"><Path Style="{StaticResource LineIcon}" Data="M19,8 A8,8 0 1 0 20,14 M19,3 V8 H14" /></Button>
@@ -51,6 +51,14 @@
             <ScrollViewer Grid.Row="2" HorizontalScrollBarVisibility="Disabled" VerticalScrollBarVisibility="Auto" Background="Transparent">
                 <Grid>
                     <StackPanel x:Name="DashboardContent">
+                        <Border Padding="6,3" Margin="0,0,0,4" CornerRadius="7" BorderBrush="{StaticResource LineBrush}" BorderThickness="1" Background="#10192737" Visibility="{Binding ActivitySummaryVisibility}">
+                            <Grid>
+                                <Grid.ColumnDefinitions><ColumnDefinition Width="17" /><ColumnDefinition Width="*" /><ColumnDefinition Width="Auto" /></Grid.ColumnDefinitions>
+                                <Path Style="{StaticResource LineIcon}" Stroke="{StaticResource AccentBrush}" Data="M12,4 A8,8 0 1 1 4,12 M12,7 V12 L15,14" />
+                                <TextBlock Grid.Column="1" Text="{Binding EarliestRecoveryText}" AutomationProperties.AutomationId="EarliestRecovery" AutomationProperties.Name="{Binding EarliestRecoveryText}" AutomationProperties.HelpText="{Binding EarliestRecoveryTooltip}" ToolTip="{Binding EarliestRecoveryTooltip}" Foreground="{StaticResource SecondaryTextBrush}" VerticalAlignment="Center" FontSize="10" />
+                                <TextBlock Grid.Column="2" Text="{Binding LastUpdatedText}" AutomationProperties.AutomationId="LastUpdated" AutomationProperties.Name="{Binding LastUpdatedText}" AutomationProperties.HelpText="{Binding LastUpdatedTooltip}" ToolTip="{Binding LastUpdatedTooltip}" Foreground="{StaticResource AccentBrush}" VerticalAlignment="Center" FontSize="10" Margin="8,0,0,0" />
+                            </Grid>
+                        </Border>
                         <Border Padding="7,4" Margin="0,0,0,4" CornerRadius="8" BorderBrush="{Binding MonthlyToneBrush}" BorderThickness="1" Background="#151A3039" Visibility="{Binding MonthlyVisibility}">
                             <StackPanel>
                                 <Grid Height="21"><TextBlock Text="{Binding Text.MonthlyQuota}" Foreground="{Binding MonthlyToneBrush}" FontWeight="SemiBold" VerticalAlignment="Center" /><TextBlock Text="{Binding MonthlyPercentText}" Foreground="{Binding MonthlyToneBrush}" HorizontalAlignment="Right" FontSize="17" FontWeight="SemiBold" /></Grid>

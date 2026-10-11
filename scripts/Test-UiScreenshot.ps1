@@ -208,11 +208,12 @@ try {
     if ($null -eq $freeWindow) { throw 'Free widget window was not found.' }
     Start-Sleep -Milliseconds 300
     $freeNames = Get-DescendantNames -Window $freeWindow
-    foreach ($required in @('免费版', '月度', '剩余额度', '61,986')) {
+    foreach ($required in @('免费版', '月度', '剩余额度', '61,986', '刚刚更新')) {
         if ($freeNames -notcontains $required) { throw "Free dashboard is missing: $required" }
     }
+    if (-not ($freeNames | Where-Object { $_ -match '^下次恢复' })) { throw 'Free dashboard is missing the earliest recovery summary.' }
     if ($freeNames -contains '会员到期时间未知') { throw 'Free dashboard should not show an unknown membership row.' }
-    foreach ($controlId in @('MonthlyExpiry', 'RemainingCredits')) {
+    foreach ($controlId in @('MonthlyExpiry', 'RemainingCredits', 'EarliestRecovery', 'LastUpdated', 'ResetCredits')) {
         $freeControl = $freeWindow.FindFirst([System.Windows.Automation.TreeScope]::Descendants,
             [System.Windows.Automation.PropertyCondition]::new([System.Windows.Automation.AutomationElement]::AutomationIdProperty, $controlId))
         if ($null -eq $freeControl) { throw "Free dashboard control missing: $controlId" }
@@ -220,6 +221,9 @@ try {
     $monthly = $freeWindow.FindFirst([System.Windows.Automation.TreeScope]::Descendants,
         [System.Windows.Automation.PropertyCondition]::new([System.Windows.Automation.AutomationElement]::AutomationIdProperty, 'MonthlyExpiry'))
     if ($monthly.Current.HelpText -notmatch '\d{4}/\d{2}/\d{2} \d{2}:\d{2}:\d{2}') { throw 'Free monthly tooltip lacks complete reset date.' }
+    $freeResetCredits = $freeWindow.FindFirst([System.Windows.Automation.TreeScope]::Descendants,
+        [System.Windows.Automation.PropertyCondition]::new([System.Windows.Automation.AutomationElement]::AutomationIdProperty, 'ResetCredits'))
+    if ($freeResetCredits.Current.HelpText -notmatch '最早重置券到期.*\d{4}/\d{2}/\d{2} \d{2}:\d{2}:\d{2}') { throw 'Free reset credits tooltip lacks earliest expiry.' }
     Save-WindowScreenshot -Window $freeWindow -Path (Join-Path $output 'free-dashboard-printwindow.png')
     Write-Output '[OK] Free monthly quota, remaining credits and hidden membership row passed.'
 }

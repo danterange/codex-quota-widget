@@ -26,6 +26,7 @@ public sealed class QuotaViewModel : INotifyPropertyChanged, IDisposable
     private bool refreshing;
     private bool disposed;
     private int consecutiveFailures;
+    private DateTimeOffset? lastSuccessfulRefreshAt;
 
     /// <summary>
     /// 初始化真实 Codex 提供器；只有显式传入演示提供器时才使用静态演示数据。
@@ -75,7 +76,11 @@ public sealed class QuotaViewModel : INotifyPropertyChanged, IDisposable
         ? FormatExpiryCountdown(expiry, DateTimeOffset.Now, language)
         : MembershipText;
     public string ResetCreditsText => snapshot?.ResetCredits is { } count ? count.ToString() : "--";
-    public string ResetCreditsDisplayText => $"{Text.ResetCredits}: {ResetCreditsText}";
+    public string ResetCreditsDisplayText => snapshot?.ResetCredits is { } count
+        ? snapshot.EarliestResetCreditExpiresAt is { } expiry
+            ? $"{Text.ResetCredits}: {count}\n{Text.ResetCreditEarliestExpiry}: {FormatExpiryCountdown(expiry, DateTimeOffset.Now, language)}"
+            : $"{Text.ResetCredits}: {count}"
+        : Text.ResetCredits;
     public Visibility ResetCreditsVisibility => snapshot?.ResetCredits is null ? Visibility.Collapsed : Visibility.Visible;
     public Visibility RemainingCreditsVisibility => snapshot?.RemainingCredits is not null || snapshot?.CreditsUnlimited == true
         ? Visibility.Visible
@@ -95,6 +100,19 @@ public sealed class QuotaViewModel : INotifyPropertyChanged, IDisposable
         : Visibility.Visible;
     public bool HasDisplayableData => snapshot is not null && (snapshot.FiveHour is not null || snapshot.SevenDay is not null
         || snapshot.Monthly is not null || snapshot.RemainingCredits is not null || snapshot.CreditsUnlimited);
+    public Visibility ActivitySummaryVisibility => HasDisplayableData ? Visibility.Visible : Visibility.Collapsed;
+    public string EarliestRecoveryText => GetEarliestResetAt() is { } resetAt
+        ? $"{Text.NextRecovery} · {FormatRemainingCountdown(resetAt, DateTimeOffset.Now, language)}"
+        : Text.RecoveryUnavailable;
+    public string EarliestRecoveryTooltip => GetEarliestResetAt() is { } resetAt
+        ? $"{Text.NextRecovery}: {FormatExpiryCountdown(resetAt, DateTimeOffset.Now, language)}"
+        : Text.RecoveryUnavailable;
+    public string LastUpdatedText => lastSuccessfulRefreshAt is not { } updatedAt
+        ? Text.FetchingLatest
+        : FormatLastUpdated(updatedAt, DateTimeOffset.Now);
+    public string LastUpdatedTooltip => lastSuccessfulRefreshAt is { } updatedAt
+        ? $"{Text.LastSuccessfulUpdate}: {updatedAt.ToLocalTime():yyyy/MM/dd HH:mm:ss}"
+        : Text.FetchingLatest;
     public string ErrorText => errorDetail;
     public bool CanRefresh => !refreshing && !disposed;
     public string ConnectionText => HasStableError
@@ -147,6 +165,10 @@ public sealed class QuotaViewModel : INotifyPropertyChanged, IDisposable
             OnPropertyChanged(nameof(SevenDayResetTooltip));
             OnPropertyChanged(nameof(MonthlyResetTooltip));
             OnPropertyChanged(nameof(ResetCreditsDisplayText));
+            OnPropertyChanged(nameof(EarliestRecoveryText));
+            OnPropertyChanged(nameof(EarliestRecoveryTooltip));
+            OnPropertyChanged(nameof(LastUpdatedText));
+            OnPropertyChanged(nameof(LastUpdatedTooltip));
             OnPropertyChanged(nameof(RemainingCreditsText));
             OnPropertyChanged(nameof(RemainingCreditsTooltip));
             OnPropertyChanged(nameof(PlanName));
@@ -211,6 +233,7 @@ public sealed class QuotaViewModel : INotifyPropertyChanged, IDisposable
                 errorMessage = null;
                 errorDetail = string.Empty;
                 consecutiveFailures = 0;
+                lastSuccessfulRefreshAt = DateTimeOffset.Now;
             }
             catch (OperationCanceledException) when (disposed)
             {
@@ -264,6 +287,10 @@ public sealed class QuotaViewModel : INotifyPropertyChanged, IDisposable
         OnPropertyChanged(nameof(MonthlyResetTooltip));
         OnPropertyChanged(nameof(MembershipText));
         OnPropertyChanged(nameof(MembershipTooltipText));
+        OnPropertyChanged(nameof(EarliestRecoveryText));
+        OnPropertyChanged(nameof(EarliestRecoveryTooltip));
+        OnPropertyChanged(nameof(LastUpdatedText));
+        OnPropertyChanged(nameof(LastUpdatedTooltip));
         _ = RefreshAsync();
     }
 
@@ -336,6 +363,38 @@ public sealed class QuotaViewModel : INotifyPropertyChanged, IDisposable
 
     /// <summary>判断当前有效快照是否为 Free；仅在没有会员日期时隐藏无意义的订阅到期行。</summary>
     private bool IsFreePlan => string.Equals(snapshot?.PlanName, "free", StringComparison.OrdinalIgnoreCase);
+
+    /// <summary>从可用额度窗口中找出最早重置时刻，帮助用户判断下一次最早恢复使用的时间。</summary>
+    private DateTimeOffset? GetEarliestResetAt()
+    {
+        DateTimeOffset? earliest = null;
+        foreach (var resetAt in new[] { snapshot?.FiveHour?.ResetAt, snapshot?.SevenDay?.ResetAt, snapshot?.Monthly?.ResetAt })
+        {
+            if (resetAt is { } value && (earliest is null || value < earliest))
+            {
+                earliest = value;
+            }
+        }
+
+        return earliest;
+    }
+
+    /// <summary>将上次成功更新时间压缩为短文本，完整时刻通过悬浮提示保留。</summary>
+    private string FormatLastUpdated(DateTimeOffset updatedAt, DateTimeOffset now)
+    {
+        var elapsed = now.ToLocalTime() - updatedAt.ToLocalTime();
+        if (elapsed < TimeSpan.FromMinutes(1))
+        {
+            return Text.UpdatedNow;
+        }
+
+        if (elapsed < TimeSpan.FromHours(1))
+        {
+            return string.Format(CultureInfo.CurrentCulture, Text.UpdatedMinutesAgo, Math.Floor(elapsed.TotalMinutes));
+        }
+
+        return string.Format(CultureInfo.CurrentCulture, Text.UpdatedHoursAgo, Math.Floor(elapsed.TotalHours));
+    }
 
     /// <summary>将提供器预定义的错误标题映射为当前界面语言，避免英语界面夹杂中文错误名称。</summary>
     private string LocalizeError(string message)

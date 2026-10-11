@@ -25,6 +25,9 @@ public sealed record QuotaSnapshot(
     /// <summary>明确的无限额度标记；为 true 时不显示虚构数值，改为展示“不限”。</summary>
     public bool CreditsUnlimited { get; init; }
 
+    /// <summary>可用重置券中最早的到期时间；只作提醒展示，组件不提供或调用重置操作。</summary>
+    public DateTimeOffset? EarliestResetCreditExpiresAt { get; init; }
+
     /// <summary>
     /// 标识当前账号的非敏感键；通常为 app-server 返回的 accountId，不应存放令牌或完整邮箱。
     /// </summary>
