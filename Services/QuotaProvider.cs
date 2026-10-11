@@ -1,4 +1,5 @@
 using System.Diagnostics;
+using System.Globalization;
 using System.IO;
 using System.Text.Json;
 using CodexQuotaWidget.Models;
@@ -15,11 +16,29 @@ public interface IQuotaProvider
 /// <summary>提供本地演示数据，使组件在没有 Codex 登录状态时仍可进行 UI 验证。</summary>
 public sealed class DemoQuotaProvider : IQuotaProvider
 {
+    private readonly bool useFreePlan;
+
+    /// <summary>初始化演示提供器；Free 演示用于验证月度窗口和剩余额度，不连接真实账号。</summary>
+    public DemoQuotaProvider(bool useFreePlan = false)
+    {
+        this.useFreePlan = useFreePlan;
+    }
+
     /// <summary>返回固定额度示例；重置时间相对当前时刻计算，便于观察倒计时。</summary>
     public Task<QuotaSnapshot> GetSnapshotAsync(CancellationToken cancellationToken)
     {
         cancellationToken.ThrowIfCancellationRequested();
         var now = DateTimeOffset.Now;
+        if (useFreePlan)
+        {
+            return Task.FromResult(new QuotaSnapshot("demo", "free", null, null, null, 2)
+            {
+                AccountKey       = "demo-free",
+                Monthly          = new QuotaWindow("month", 0, now.AddDays(29).AddHours(3)),
+                RemainingCredits = 61_986m
+            });
+        }
+
         return Task.FromResult(new QuotaSnapshot("demo", "Pro", new QuotaWindow("5h", 42, now.AddHours(1).AddMinutes(26)), new QuotaWindow("7d", 68, now.AddDays(4).AddHours(8)), new DateTimeOffset(now.Year, 10, 12, 23, 59, 0, now.Offset), 1) { AccountKey = "demo" });
     }
 }
@@ -62,7 +81,8 @@ public sealed class CodexQuotaProvider : IQuotaProvider
             await SendAsync(process, "{\"id\":3,\"method\":\"account/rateLimits/read\",\"params\":{}}", timeout.Token);
             var limits = await ReadResponseAsync(process, 3, stderr, timeout.Token);
             var snapshot = ParseSnapshot(account, limits);
-            if (snapshot.FiveHour is null && snapshot.SevenDay is null)
+            if (snapshot.FiveHour is null && snapshot.SevenDay is null && snapshot.Monthly is null
+                && snapshot.RemainingCredits is null && !snapshot.CreditsUnlimited)
             {
                 throw new QuotaReadException("暂无额度数据", "Codex 未返回 5 小时或 7 天窗口，组件将自动重试。");
             }
@@ -154,18 +174,94 @@ public sealed class CodexQuotaProvider : IQuotaProvider
         var plan = account.ValueKind == JsonValueKind.Object && account.TryGetProperty("planType", out var planValue) ? planValue.GetString() ?? "unknown" : "unknown";
         var windows = new List<QuotaWindow>();
         AddWindows(limitsResponse, windows);
+        var (remainingCredits, creditsUnlimited) = FindCredits(limitsResponse);
         var resetCredits = limitsResponse.TryGetProperty("rateLimitResetCredits", out var credits) && credits.ValueKind == JsonValueKind.Object && credits.TryGetProperty("availableCount", out var count) ? count.GetInt32() : (int?)null;
-        // app-server 的账号响应在部分版本不会带订阅日期；此时从本机登录令牌补齐同一账号的订阅有效期。
-        var membershipExpiresAt = FindMembershipExpiry(account) ?? CodexAuthMembershipReader.Read();
-        return new QuotaSnapshot(accountLabel, plan, windows.Find(window => window.Label == "5h"), windows.Find(window => window.Label == "7d"), membershipExpiresAt, resetCredits) { AccountKey = accountId ?? accountLabel };
+        // Free 没有订阅有效期；避免本机遗留认证声明把 Free 账户误显示为付费会员。
+        // 其他 ChatGPT 套餐才在 app-server 缺失字段时从同一登录令牌补齐。
+        var membershipExpiresAt = string.Equals(plan, "free", StringComparison.OrdinalIgnoreCase)
+            ? null
+            : FindMembershipExpiry(account) ?? CodexAuthMembershipReader.Read();
+        return new QuotaSnapshot(accountLabel, plan, windows.Find(window => window.Label == "5h"), windows.Find(window => window.Label == "7d"), membershipExpiresAt, resetCredits)
+        {
+            AccountKey       = accountId ?? accountLabel,
+            Monthly          = windows.Find(window => window.Label == "month"),
+            RemainingCredits = remainingCredits,
+            CreditsUnlimited = creditsUnlimited
+        };
     }
 
     /// <summary>收集单桶或多桶响应中的非空窗口。</summary>
     private static void AddWindows(JsonElement response, ICollection<QuotaWindow> windows)
     {
+        foreach (var snapshot in EnumerateLimitSnapshots(response))
+        {
+            AddWindowsFromSnapshot(snapshot, windows);
+        }
+    }
+
+    /// <summary>枚举单桶或按 Limit ID 分组的额度快照，避免 Free 与付费账户走不同解析分支。</summary>
+    private static IEnumerable<JsonElement> EnumerateLimitSnapshots(JsonElement response)
+    {
         if (response.TryGetProperty("rateLimitsByLimitId", out var byLimitId) && byLimitId.ValueKind == JsonValueKind.Object)
-            foreach (var item in byLimitId.EnumerateObject()) AddWindowsFromSnapshot(item.Value, windows);
-        else if (response.TryGetProperty("rateLimits", out var single)) AddWindowsFromSnapshot(single, windows);
+        {
+            foreach (var item in byLimitId.EnumerateObject())
+            {
+                yield return item.Value;
+            }
+
+            yield break;
+        }
+
+        if (response.TryGetProperty("rateLimits", out var single) && single.ValueKind == JsonValueKind.Object)
+        {
+            yield return single;
+        }
+    }
+
+    /// <summary>读取明确命名的 credits 字段；余额、无限额度和重置券始终分开处理。</summary>
+    private static (decimal? RemainingCredits, bool CreditsUnlimited) FindCredits(JsonElement response)
+    {
+        foreach (var snapshot in EnumerateLimitSnapshots(response))
+        {
+            if (!snapshot.TryGetProperty("credits", out var credits) || credits.ValueKind != JsonValueKind.Object)
+            {
+                continue;
+            }
+
+            var hasCredits = !credits.TryGetProperty("hasCredits", out var hasValue)
+                || hasValue.ValueKind != JsonValueKind.False;
+            if (!hasCredits)
+            {
+                continue;
+            }
+
+            var unlimited = credits.TryGetProperty("unlimited", out var unlimitedValue)
+                && unlimitedValue.ValueKind == JsonValueKind.True;
+            if (unlimited)
+            {
+                return (null, true);
+            }
+
+            if (credits.TryGetProperty("balance", out var balance) && TryGetDecimal(balance, out var value))
+            {
+                return (value, false);
+            }
+        }
+
+        return (null, false);
+    }
+
+    /// <summary>兼容 app-server 将 credit balance 编码为 JSON 数字或十进制字符串的版本差异。</summary>
+    private static bool TryGetDecimal(JsonElement value, out decimal parsed)
+    {
+        parsed = default;
+        if (value.ValueKind == JsonValueKind.Number && value.TryGetDecimal(out parsed))
+        {
+            return true;
+        }
+
+        return value.ValueKind == JsonValueKind.String
+            && decimal.TryParse(value.GetString(), NumberStyles.Number, CultureInfo.InvariantCulture, out parsed);
     }
 
     /// <summary>
@@ -221,7 +317,7 @@ public sealed class CodexQuotaProvider : IQuotaProvider
         {
             if (!snapshot.TryGetProperty(propertyName, out var window) || window.ValueKind != JsonValueKind.Object || !window.TryGetProperty("usedPercent", out var used)) continue;
             var duration = window.TryGetProperty("windowDurationMins", out var durationValue) && durationValue.ValueKind == JsonValueKind.Number ? durationValue.GetInt64() : 0;
-            var label = duration switch { 300 => "5h", 10080 => "7d", _ => null };
+            var label = duration switch { 300 => "5h", 10080 => "7d", 43200 => "month", _ => null };
             if (label is null) continue;
             DateTimeOffset? resetAt = null;
             if (window.TryGetProperty("resetsAt", out var resetValue) && resetValue.ValueKind == JsonValueKind.Number) resetAt = DateTimeOffset.FromUnixTimeSeconds(resetValue.GetInt64()).ToLocalTime();

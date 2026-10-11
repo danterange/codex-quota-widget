@@ -92,11 +92,12 @@ function Capture-RenderScreenshot {
     param(
         [Parameter(Mandatory = $true)] [string]$Executable,
         [Parameter(Mandatory = $true)] [string]$Path,
-        [switch]$Settings
+        [switch]$Settings,
+        [switch]$Free
     )
 
     Remove-Item -LiteralPath $Path -Force -ErrorAction SilentlyContinue
-    $arguments = @('--demo', '--exit-on-close', "--capture-screenshot=$Path")
+    $arguments = @($(if ($Free) { '--demo-free' } else { '--demo' }), '--exit-on-close', "--capture-screenshot=$Path")
     if ($Settings) { $arguments += '--start-settings' }
     $captureProcess = Start-Process -FilePath $Executable -WorkingDirectory (Split-Path -Parent $Executable) -ArgumentList $arguments -PassThru
     try {
@@ -185,8 +186,51 @@ $output = Join-Path $ProjectRoot 'artifacts\ui-test'
 New-Item -ItemType Directory -Path $output -Force | Out-Null
 $dashboardShot = Join-Path $output 'dashboard.png'
 $settingsShot = Join-Path $output 'settings.png'
+$freeDashboardShot = Join-Path $output 'free-dashboard.png'
 Capture-RenderScreenshot -Executable $exe -Path $dashboardShot
 Capture-RenderScreenshot -Executable $exe -Path $settingsShot -Settings
+Capture-RenderScreenshot -Executable $exe -Path $freeDashboardShot -Free
+
+# Free accounts can have a valid monthly window and a credit balance without 5h/7d data.
+$freeProcess = Start-Process -FilePath $exe -WorkingDirectory (Split-Path -Parent $exe) -ArgumentList @('--demo-free', '--exit-on-close') -PassThru
+$freeWindow = $null
+try {
+    $freeWindowCondition = [System.Windows.Automation.AndCondition]::new(
+        [System.Windows.Automation.PropertyCondition]::new([System.Windows.Automation.AutomationElement]::ProcessIdProperty, $freeProcess.Id),
+        [System.Windows.Automation.PropertyCondition]::new([System.Windows.Automation.AutomationElement]::ControlTypeProperty, [System.Windows.Automation.ControlType]::Window))
+    $freeDeadline = [DateTime]::UtcNow.AddSeconds(15)
+    do {
+        $freeProcess.Refresh()
+        if ($freeProcess.HasExited) { throw "Free widget exited early: $($freeProcess.ExitCode)" }
+        $freeWindow = [System.Windows.Automation.AutomationElement]::RootElement.FindFirst([System.Windows.Automation.TreeScope]::Children, $freeWindowCondition)
+        if ($null -eq $freeWindow) { Start-Sleep -Milliseconds 200 }
+    } while ($null -eq $freeWindow -and [DateTime]::UtcNow -lt $freeDeadline)
+    if ($null -eq $freeWindow) { throw 'Free widget window was not found.' }
+    Start-Sleep -Milliseconds 300
+    $freeNames = Get-DescendantNames -Window $freeWindow
+    foreach ($required in @('免费版', '月度', '剩余额度', '61,986')) {
+        if ($freeNames -notcontains $required) { throw "Free dashboard is missing: $required" }
+    }
+    if ($freeNames -contains '会员到期时间未知') { throw 'Free dashboard should not show an unknown membership row.' }
+    foreach ($controlId in @('MonthlyExpiry', 'RemainingCredits')) {
+        $freeControl = $freeWindow.FindFirst([System.Windows.Automation.TreeScope]::Descendants,
+            [System.Windows.Automation.PropertyCondition]::new([System.Windows.Automation.AutomationElement]::AutomationIdProperty, $controlId))
+        if ($null -eq $freeControl) { throw "Free dashboard control missing: $controlId" }
+    }
+    $monthly = $freeWindow.FindFirst([System.Windows.Automation.TreeScope]::Descendants,
+        [System.Windows.Automation.PropertyCondition]::new([System.Windows.Automation.AutomationElement]::AutomationIdProperty, 'MonthlyExpiry'))
+    if ($monthly.Current.HelpText -notmatch '\d{4}/\d{2}/\d{2} \d{2}:\d{2}:\d{2}') { throw 'Free monthly tooltip lacks complete reset date.' }
+    Save-WindowScreenshot -Window $freeWindow -Path (Join-Path $output 'free-dashboard-printwindow.png')
+    Write-Output '[OK] Free monthly quota, remaining credits and hidden membership row passed.'
+}
+finally {
+    if ($null -ne $freeWindow -and -not $freeProcess.HasExited) {
+        [void][UiScreenshotNative]::PostMessage([IntPtr]$freeWindow.Current.NativeWindowHandle, 0x0010, [IntPtr]::Zero, [IntPtr]::Zero)
+        [void]$freeProcess.WaitForExit(10000)
+    }
+    if (-not $freeProcess.HasExited) { Stop-Process -Id $freeProcess.Id }
+    $freeProcess.Dispose()
+}
 $process = Start-Process -FilePath $exe -WorkingDirectory (Split-Path -Parent $exe) -ArgumentList @('--demo', '--exit-on-close') -PassThru
 $window = $null
 try {

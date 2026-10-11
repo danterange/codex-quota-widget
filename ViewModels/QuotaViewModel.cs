@@ -1,4 +1,5 @@
 using System.ComponentModel;
+using System.Globalization;
 using System.IO;
 using System.Runtime.CompilerServices;
 using System.Text.Json;
@@ -55,7 +56,13 @@ public sealed class QuotaViewModel : INotifyPropertyChanged, IDisposable
     public string SevenDayResetText => FormatRemaining(snapshot?.SevenDay?.ResetAt);
     public string SevenDayResetTooltip => FormatExpiryTooltip(snapshot?.SevenDay?.ResetAt);
     public System.Windows.Media.Brush SevenDayToneBrush => GetQuotaToneBrush(snapshot?.SevenDay);
-    public string PlanName => snapshot?.PlanName is { Length: > 0 } plan ? plan : "--";
+    public Visibility MonthlyVisibility => snapshot?.Monthly is null ? Visibility.Collapsed : Visibility.Visible;
+    public double MonthlyPercent => snapshot?.Monthly?.Percent ?? 0;
+    public string MonthlyPercentText => FormatPercent(snapshot?.Monthly);
+    public string MonthlyResetText => FormatRemaining(snapshot?.Monthly?.ResetAt);
+    public string MonthlyResetTooltip => FormatExpiryTooltip(snapshot?.Monthly?.ResetAt);
+    public System.Windows.Media.Brush MonthlyToneBrush => GetQuotaToneBrush(snapshot?.Monthly);
+    public string PlanName => FormatPlanName(snapshot?.PlanName);
     public LocalizedText Text => LocalizedTextProvider.Get(language);
     public string MembershipText => HasStableError
         ? LocalizeError(errorMessage!)
@@ -69,6 +76,25 @@ public sealed class QuotaViewModel : INotifyPropertyChanged, IDisposable
         : MembershipText;
     public string ResetCreditsText => snapshot?.ResetCredits is { } count ? count.ToString() : "--";
     public string ResetCreditsDisplayText => $"{Text.ResetCredits}: {ResetCreditsText}";
+    public Visibility ResetCreditsVisibility => snapshot?.ResetCredits is null ? Visibility.Collapsed : Visibility.Visible;
+    public Visibility RemainingCreditsVisibility => snapshot?.RemainingCredits is not null || snapshot?.CreditsUnlimited == true
+        ? Visibility.Visible
+        : Visibility.Collapsed;
+    public string RemainingCreditsText => snapshot?.CreditsUnlimited == true
+        ? Text.UnlimitedCredits
+        : snapshot?.RemainingCredits is { } credits
+        ? decimal.Round(credits, 0, MidpointRounding.AwayFromZero).ToString("N0", CultureInfo.CurrentCulture)
+        : "--";
+    public string RemainingCreditsTooltip => snapshot?.CreditsUnlimited == true
+        ? Text.UnlimitedCredits
+        : snapshot?.RemainingCredits is { } credits
+        ? $"{Text.RemainingCredits}: {credits.ToString("N4", CultureInfo.CurrentCulture)}"
+        : Text.RemainingCredits;
+    public Visibility MembershipVisibility => IsFreePlan && snapshot?.MembershipExpiresAt is null
+        ? Visibility.Collapsed
+        : Visibility.Visible;
+    public bool HasDisplayableData => snapshot is not null && (snapshot.FiveHour is not null || snapshot.SevenDay is not null
+        || snapshot.Monthly is not null || snapshot.RemainingCredits is not null || snapshot.CreditsUnlimited);
     public string ErrorText => errorDetail;
     public bool CanRefresh => !refreshing && !disposed;
     public string ConnectionText => HasStableError
@@ -116,14 +142,20 @@ public sealed class QuotaViewModel : INotifyPropertyChanged, IDisposable
             OnPropertyChanged(nameof(Text));
             OnPropertyChanged(nameof(FiveHourResetText));
             OnPropertyChanged(nameof(SevenDayResetText));
+            OnPropertyChanged(nameof(MonthlyResetText));
             OnPropertyChanged(nameof(FiveHourResetTooltip));
             OnPropertyChanged(nameof(SevenDayResetTooltip));
+            OnPropertyChanged(nameof(MonthlyResetTooltip));
             OnPropertyChanged(nameof(ResetCreditsDisplayText));
+            OnPropertyChanged(nameof(RemainingCreditsText));
+            OnPropertyChanged(nameof(RemainingCreditsTooltip));
+            OnPropertyChanged(nameof(PlanName));
             OnPropertyChanged(nameof(ConnectionText));
             OnPropertyChanged(nameof(MembershipTooltipText));
         }
 
         OnPropertyChanged(nameof(MembershipText));
+        OnPropertyChanged(nameof(MembershipVisibility));
         OnPropertyChanged(nameof(StatusText));
     }
 
@@ -226,8 +258,10 @@ public sealed class QuotaViewModel : INotifyPropertyChanged, IDisposable
     {
         OnPropertyChanged(nameof(FiveHourResetText));
         OnPropertyChanged(nameof(SevenDayResetText));
+        OnPropertyChanged(nameof(MonthlyResetText));
         OnPropertyChanged(nameof(FiveHourResetTooltip));
         OnPropertyChanged(nameof(SevenDayResetTooltip));
+        OnPropertyChanged(nameof(MonthlyResetTooltip));
         OnPropertyChanged(nameof(MembershipText));
         OnPropertyChanged(nameof(MembershipTooltipText));
         _ = RefreshAsync();
@@ -238,9 +272,13 @@ public sealed class QuotaViewModel : INotifyPropertyChanged, IDisposable
     /// </summary>
     private static IQuotaProvider CreateDefaultProvider()
     {
+        var useFreeDemo = Environment.GetCommandLineArgs().Any(argument =>
+            string.Equals(argument, "--demo-free", StringComparison.OrdinalIgnoreCase));
         var useDemo = Environment.GetCommandLineArgs().Any(argument =>
             string.Equals(argument, "--demo", StringComparison.OrdinalIgnoreCase));
-        return useDemo ? new DemoQuotaProvider() : new CodexQuotaProvider();
+        return useFreeDemo ? new DemoQuotaProvider(useFreePlan: true)
+            : useDemo ? new DemoQuotaProvider()
+            : new CodexQuotaProvider();
     }
 
     /// <summary>
@@ -265,10 +303,10 @@ public sealed class QuotaViewModel : INotifyPropertyChanged, IDisposable
         return expiry is null ? "--" : FormatExpiryCountdown(expiry.Value, DateTimeOffset.Now, language);
     }
 
-    /// <summary>按剩余百分比选择 25% 区间颜色，保持进度颜色同时表达额度状态。</summary>
+    /// <summary>按已使用程度选择 25% 区间颜色，确保剩余 0% 显示红色而不是安全色。</summary>
     internal static string GetQuotaTone(double percent)
     {
-        return percent < 25 ? "Green" : percent < 50 ? "Purple" : percent < 75 ? "Yellow" : "Red";
+        return percent > 75 ? "Green" : percent > 50 ? "Purple" : percent > 25 ? "Yellow" : "Red";
     }
 
     /// <summary>将额度窗口映射为可绑定画刷；缺失窗口使用中性灰色，避免伪造额度状态。</summary>
@@ -282,6 +320,22 @@ public sealed class QuotaViewModel : INotifyPropertyChanged, IDisposable
             _        => System.Windows.Media.Brushes.Tomato
         };
     }
+
+    /// <summary>将协议原始套餐名转换为当前界面语言，避免 Free 账户显示低可读性的内部小写值。</summary>
+    private string FormatPlanName(string? plan)
+    {
+        return plan?.Trim().ToLowerInvariant() switch
+        {
+            "free" => Text.FreePlan,
+            "pro"  => "Pro",
+            "plus" => "Plus",
+            { Length: > 0 } value => value,
+            _ => "--"
+        };
+    }
+
+    /// <summary>判断当前有效快照是否为 Free；仅在没有会员日期时隐藏无意义的订阅到期行。</summary>
+    private bool IsFreePlan => string.Equals(snapshot?.PlanName, "free", StringComparison.OrdinalIgnoreCase);
 
     /// <summary>将提供器预定义的错误标题映射为当前界面语言，避免英语界面夹杂中文错误名称。</summary>
     private string LocalizeError(string message)

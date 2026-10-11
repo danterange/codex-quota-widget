@@ -277,9 +277,7 @@ public partial class MainWindow : Window
             return;
         }
 
-        if (!startOnSettings && viewModel.PlanName == "--" &&
-            viewModel.FiveHourVisibility == Visibility.Collapsed &&
-            viewModel.SevenDayVisibility == Visibility.Collapsed && captureAttempts++ < 30)
+        if (!startOnSettings && !viewModel.HasDisplayableData && captureAttempts++ < 30)
         {
             ScheduleCaptureRetry();
             return;
@@ -339,7 +337,7 @@ public partial class MainWindow : Window
     /// <summary>首个额度快照完成后锁定内容驱动的初始尺寸，随后允许用户自由调整窗口。</summary>
     private void ViewModelPropertyChanged(object? sender, PropertyChangedEventArgs e)
     {
-        if (autoSizingLocked || e.PropertyName != string.Empty || (viewModel.PlanName == "--" && viewModel.FiveHourVisibility == Visibility.Collapsed && viewModel.SevenDayVisibility == Visibility.Collapsed))
+        if (autoSizingLocked || e.PropertyName != string.Empty || !viewModel.HasDisplayableData)
         {
             return;
         }

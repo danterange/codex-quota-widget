@@ -22,7 +22,7 @@ internal static class Program
         {
             if (args.Contains("--window-shell"))
             {
-                if (!args.Contains("--demo")) throw new ArgumentException("Window shell checks require --demo.");
+                if (!args.Contains("--demo") && !args.Contains("--demo-free")) throw new ArgumentException("Window shell checks require --demo or --demo-free.");
                 CheckWindowShell();
                 return 0;
             }
@@ -33,9 +33,13 @@ internal static class Program
                     Environment.GetEnvironmentVariable("PATH", EnvironmentVariableTarget.Machine) + ";" +
                     Environment.GetEnvironmentVariable("PATH", EnvironmentVariableTarget.User));
                 var result = new CodexQuotaProvider().GetSnapshotAsync(CancellationToken.None).GetAwaiter().GetResult();
-                Check(result.FiveHour is not null || result.SevenDay is not null, "普通桌面环境返回真实额度");
-                Check(result.MembershipExpiresAt is not null, "普通桌面环境返回自动会员到期时间");
-                Console.WriteLine($"LIVE plan={result.PlanName} 5h={result.FiveHour?.Percent} weeklyRemaining={result.SevenDay?.Percent} resets={result.SevenDay?.ResetAt:O} membership={result.MembershipExpiresAt:O} resetCredits={result.ResetCredits}");
+                Check(result.FiveHour is not null || result.SevenDay is not null || result.Monthly is not null
+                    || result.RemainingCredits is not null || result.CreditsUnlimited, "普通桌面环境返回真实可展示额度");
+                if (!string.Equals(result.PlanName, "free", StringComparison.OrdinalIgnoreCase))
+                {
+                    Check(result.MembershipExpiresAt is not null, "付费套餐返回自动会员到期时间");
+                }
+                Console.WriteLine($"LIVE plan={result.PlanName} 5h={result.FiveHour?.Percent} weekly={result.SevenDay?.Percent} monthly={result.Monthly?.Percent} credits={result.RemainingCredits} unlimited={result.CreditsUnlimited} resets={result.ResetCredits}");
                 CheckDispatcher(new CodexQuotaProvider(), live: true);
             }
             else
@@ -43,6 +47,7 @@ internal static class Program
                 CheckLocator();
                 CheckSettings();
                 CheckMembershipPresentation();
+                CheckFreePresentationAsync().GetAwaiter().GetResult();
                 CheckStaleSnapshotAsync().GetAwaiter().GetResult();
                 CheckProtocolAsync().GetAwaiter().GetResult();
                 CheckDispatcher(new CountingProvider(), live: false);
@@ -159,6 +164,27 @@ internal static class Program
         CheckAuthMembershipReader();
     }
 
+    /// <summary>验证 Free 快照的月度窗口、积分余额与会员行隐藏，不把零余额或重置券混为同一字段。</summary>
+    private static async Task CheckFreePresentationAsync()
+    {
+        var provider = new FreeSnapshotProvider();
+        var viewModel = new QuotaViewModel(provider, refreshIntervalSeconds: 3600);
+        try
+        {
+            while (provider.Calls < 1) await Task.Delay(5);
+            Check(viewModel.PlanName == "免费版" && viewModel.MonthlyVisibility == Visibility.Visible
+                && viewModel.MonthlyPercentText == "0%", "Free 套餐显示月度 0% 额度");
+            Check(viewModel.RemainingCreditsVisibility == Visibility.Visible && viewModel.RemainingCreditsText == "61,986"
+                && viewModel.ResetCreditsText == "2", "剩余额度与重置券分开显示");
+            Check(viewModel.MembershipVisibility == Visibility.Collapsed && viewModel.HasDisplayableData, "Free 套餐隐藏会员未知行并保留有效数据");
+            Check(QuotaViewModel.GetQuotaTone(0) == "Red" && QuotaViewModel.GetQuotaTone(100) == "Green", "额度颜色按已使用程度映射");
+        }
+        finally
+        {
+            viewModel.Dispose();
+        }
+    }
+
     /// <summary>复现先成功后连续失败的刷新链，确保旧快照保留且第三次失败前不显示异常。</summary>
     private static async Task CheckStaleSnapshotAsync()
     {
@@ -214,7 +240,7 @@ internal static class Program
             == expectedChinese, "中文额度条到期格式精确匹配");
         Check(QuotaViewModel.FormatMembershipExpiry(expiry, now, AppLanguage.English)
             == expectedEnglish, "英文会员到期格式正确");
-        Check(QuotaViewModel.GetQuotaTone(10) == "Green" && QuotaViewModel.GetQuotaTone(25) == "Purple" && QuotaViewModel.GetQuotaTone(50) == "Yellow" && QuotaViewModel.GetQuotaTone(75) == "Red", "额度颜色按25%区间切换");
+        Check(QuotaViewModel.GetQuotaTone(10) == "Red" && QuotaViewModel.GetQuotaTone(26) == "Yellow" && QuotaViewModel.GetQuotaTone(51) == "Purple" && QuotaViewModel.GetQuotaTone(76) == "Green", "额度颜色按已使用程度每25%切换");
         Check(LocalizedTextProvider.Get(AppLanguage.English).SettingsTab == "Settings", "英文设置页文本可用");
     }
 
@@ -243,6 +269,21 @@ internal static class Program
             Check(snapshot.FiveHour is null && snapshot.SevenDay?.Percent == 45 && snapshot.ResetCredits == 2
                 && snapshot.MembershipExpiresAt == DateTimeOffset.FromUnixTimeSeconds(1893456000).ToLocalTime(),
                 "严格握手、自动会员到期、仅周额度和重置次数");
+            Environment.SetEnvironmentVariable("QUOTA_CHECK_MODE", "free");
+            var freeSnapshot = await provider.GetSnapshotAsync(CancellationToken.None);
+            Check(freeSnapshot.PlanName == "free" && freeSnapshot.Monthly?.Percent == 0
+                && freeSnapshot.RemainingCredits == 61_986m && !freeSnapshot.CreditsUnlimited
+                && freeSnapshot.FiveHour is null && freeSnapshot.SevenDay is null && freeSnapshot.MembershipExpiresAt is null
+                && freeSnapshot.ResetCredits == 2,
+                "Free 月度额度、剩余额度与重置券独立解析");
+            Environment.SetEnvironmentVariable("QUOTA_CHECK_MODE", "free-zero");
+            var freeZeroSnapshot = await provider.GetSnapshotAsync(CancellationToken.None);
+            Check(freeZeroSnapshot.RemainingCredits == 0m && !freeZeroSnapshot.CreditsUnlimited,
+                "Free 零余额是有效数据而不是缺失值");
+            Environment.SetEnvironmentVariable("QUOTA_CHECK_MODE", "free-unlimited");
+            var unlimitedSnapshot = await provider.GetSnapshotAsync(CancellationToken.None);
+            Check(unlimitedSnapshot.RemainingCredits is null && unlimitedSnapshot.CreditsUnlimited,
+                "Free 不限额度不伪造数字余额");
             foreach (var item in new[] { ("broken", "Codex 安装不完整"), ("signed-out", "请先登录 Codex"), ("api-key", "需要 ChatGPT 登录"), ("unauthorized", "登录已失效"), ("timeout", "读取超时") })
             {
                 Environment.SetEnvironmentVariable("QUOTA_CHECK_MODE", item.Item1);
@@ -310,7 +351,7 @@ internal static class Program
             try
             {
                 Check(viewModel.ErrorText.Length == 0, "最后一次刷新无错误");
-                Check(viewModel.SevenDayVisibility == Visibility.Visible, "真实绑定显示周额度");
+                Check(viewModel.HasDisplayableData, "真实绑定显示可用额度");
                 Check(updates >= 2, "观察到两次自动成功刷新");
                 if (!live) Check(((CountingProvider)provider).Calls == 3, "启动和两次自动刷新恰好三次调用");
                 if (!live) Check(!transientErrorWasShown, "单次读取失败不显示连接异常");
@@ -359,7 +400,7 @@ internal static class Program
             else if (!initialized) await Console.Out.WriteLineAsync("""{"id":2,"error":{"message":"Not initialized"}}""");
             else if (method == "account/read")
             {
-                var account = mode == "signed-out" ? "null" : mode == "api-key" ? """{"type":"apiKey"}""" : """{"type":"chatgpt","planType":"pro","membershipExpiresAt":1893456000}""";
+                var account = mode == "signed-out" ? "null" : mode == "api-key" ? """{"type":"apiKey"}""" : mode is "free" or "free-zero" or "free-unlimited" ? """{"type":"chatgpt","planType":"free"}""" : """{"type":"chatgpt","planType":"pro","membershipExpiresAt":1893456000}""";
                 await Console.Out.WriteLineAsync("""{"method":"notification","params":{}}""");
                 await Console.Out.WriteLineAsync("{\"id\":2,\"result\":{\"account\":" + account + "}}");
             }
@@ -367,6 +408,12 @@ internal static class Program
             {
                 await Console.Out.WriteLineAsync(mode == "unauthorized"
                     ? """{"id":3,"error":{"message":"401 unauthorized private-marker"}}"""
+                    : mode == "free"
+                    ? """{"id":3,"result":{"rateLimits":{"primary":{"usedPercent":100,"windowDurationMins":43200,"resetsAt":1893456000},"secondary":null,"credits":{"hasCredits":true,"unlimited":false,"balance":"61986"}},"rateLimitResetCredits":{"availableCount":2}}}"""
+                    : mode == "free-zero"
+                    ? """{"id":3,"result":{"rateLimits":{"primary":{"usedPercent":100,"windowDurationMins":43200,"resetsAt":1893456000},"secondary":null,"credits":{"hasCredits":true,"unlimited":false,"balance":"0"}}}}"""
+                    : mode == "free-unlimited"
+                    ? """{"id":3,"result":{"rateLimits":{"primary":{"usedPercent":0,"windowDurationMins":43200,"resetsAt":1893456000},"secondary":null,"credits":{"hasCredits":true,"unlimited":true}}}}"""
                     : """{"id":3,"result":{"rateLimits":{"primary":{"usedPercent":55,"windowDurationMins":10080,"resetsAt":1893456000},"secondary":null},"rateLimitResetCredits":{"availableCount":2}}}""");
             }
             await Console.Out.FlushAsync();
@@ -394,7 +441,24 @@ internal static class Program
         }
     }
 
-    /// <summary>第一次返回有效快照，后续固定失败，用于锁定旧数据显示和三次失败阈值。</summary>
+    /// <summary>构造与截图语义相同的 Free 快照，覆盖月度零剩余、余额与重置券同时存在的场景。</summary>
+    private sealed class FreeSnapshotProvider : IQuotaProvider
+    {
+        public int Calls { get; private set; }
+
+        /// <summary>返回 30 天月度窗口和精确余额；零百分比是有效数据而不是缺失值。</summary>
+        public Task<QuotaSnapshot> GetSnapshotAsync(CancellationToken cancellationToken)
+        {
+            Calls++;
+            return Task.FromResult(new QuotaSnapshot("free", "free", null, null, null, 2)
+            {
+                Monthly          = new QuotaWindow("month", 0, DateTimeOffset.Now.AddDays(29)),
+                RemainingCredits = 61_986m
+            });
+        }
+    }
+
+    /// <summary>第一次返回有效快照，后续固定失败，用于锁定旧数据显示和两次失败阈值。</summary>
     private sealed class StaleSnapshotProvider : IQuotaProvider
     {
         public int Calls { get; private set; }
