@@ -41,7 +41,7 @@ function Test-Application {
     # and makes UI Automation report a false negative even though the app is running.
     # Match the working directory used by the installed shortcut.
     # 生产环境的关闭按钮会隐藏到托盘；验收参数让 WM_CLOSE 走应用的正常退出和资源释放路径。
-    $process = Start-Process -FilePath $Executable -WorkingDirectory (Split-Path -Parent $Executable) -ArgumentList @('--demo', '--exit-on-close') -PassThru
+    $process = Start-Process -FilePath $Executable -WorkingDirectory (Split-Path -Parent $Executable) -ArgumentList @('--demo', '--exit-on-close', '--test-no-persist-settings', ("--instance-scope=" + [Guid]::NewGuid().ToString())) -PassThru
     $window = $null
     try {
         $deadline = [DateTime]::UtcNow.AddSeconds(20)

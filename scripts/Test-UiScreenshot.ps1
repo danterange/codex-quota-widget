@@ -105,7 +105,7 @@ function Capture-RenderScreenshot {
     )
 
     Remove-Item -LiteralPath $Path -Force -ErrorAction SilentlyContinue
-    $arguments = @($(if ($Free) { '--demo-free' } else { '--demo' }), '--exit-on-close', "--capture-screenshot=$Path", "--theme=$Theme")
+    $arguments = @($(if ($Free) { '--demo-free' } else { '--demo' }), '--exit-on-close', '--test-no-persist-settings', ("--instance-scope=" + [Guid]::NewGuid().ToString()), "--capture-screenshot=$Path", "--theme=$Theme")
     if ($Settings) { $arguments += '--start-settings' }
     $captureProcess = Start-Process -FilePath $Executable -WorkingDirectory (Split-Path -Parent $Executable) -ArgumentList $arguments -PassThru
     try {
@@ -201,6 +201,108 @@ function Invoke-NavigationElement {
     }
 }
 
+function Test-SingleInstanceActivation {
+    <#
+    .SYNOPSIS
+    Starts an isolated primary widget, launches a same-scope second process, and verifies that only the primary remains while its minimized window is restored.
+    #>
+    param([Parameter(Mandatory = $true)] [string]$Executable)
+
+    $scope = [Guid]::NewGuid().ToString()
+    $arguments = @('--demo', '--exit-on-close', '--test-no-persist-settings', ("--instance-scope=$scope"))
+    $primary = Start-Process -FilePath $Executable -WorkingDirectory (Split-Path -Parent $Executable) -ArgumentList $arguments -PassThru
+    $secondary = $null
+    $primaryWindow = $null
+    try {
+        $condition = [System.Windows.Automation.AndCondition]::new(
+            [System.Windows.Automation.PropertyCondition]::new([System.Windows.Automation.AutomationElement]::ProcessIdProperty, $primary.Id),
+            [System.Windows.Automation.PropertyCondition]::new([System.Windows.Automation.AutomationElement]::ControlTypeProperty, [System.Windows.Automation.ControlType]::Window))
+        $deadline = [DateTime]::UtcNow.AddSeconds(15)
+        do {
+            $primary.Refresh()
+            if ($primary.HasExited) { throw "Primary widget exited early: $($primary.ExitCode)" }
+            $primaryWindow = [System.Windows.Automation.AutomationElement]::RootElement.FindFirst([System.Windows.Automation.TreeScope]::Children, $condition)
+            if ($null -eq $primaryWindow) { Start-Sleep -Milliseconds 200 }
+        } while ($null -eq $primaryWindow -and [DateTime]::UtcNow -lt $deadline)
+        if ($null -eq $primaryWindow) { throw 'Primary widget window was not found for single-instance verification.' }
+
+        [void][UiScreenshotNative]::ShowWindow([IntPtr]$primaryWindow.Current.NativeWindowHandle, 6)
+        Start-Sleep -Milliseconds 200
+        $secondary = Start-Process -FilePath $Executable -WorkingDirectory (Split-Path -Parent $Executable) -ArgumentList $arguments -PassThru
+        if (-not $secondary.WaitForExit(6000)) { throw 'Second widget process did not exit after signaling the primary instance.' }
+        if ($secondary.ExitCode -ne 0) { throw "Second widget process exited with $($secondary.ExitCode) instead of a normal single-instance handoff." }
+
+        $restoreDeadline = [DateTime]::UtcNow.AddSeconds(5)
+        $windowPattern = $primaryWindow.GetCurrentPattern([System.Windows.Automation.WindowPattern]::Pattern)
+        do {
+            if ($windowPattern.Current.WindowVisualState -eq [System.Windows.Automation.WindowVisualState]::Normal -and -not $primaryWindow.Current.IsOffscreen) { break }
+            Start-Sleep -Milliseconds 100
+        } while ([DateTime]::UtcNow -lt $restoreDeadline)
+        if ($windowPattern.Current.WindowVisualState -ne [System.Windows.Automation.WindowVisualState]::Normal -or $primaryWindow.Current.IsOffscreen) {
+            throw 'Primary widget was not restored and brought forward after the second launch.'
+        }
+        Write-Output '[OK] Second launch exited and restored the existing single widget instance.'
+    }
+    finally {
+        if ($null -ne $primaryWindow -and -not $primary.HasExited) {
+            [void][UiScreenshotNative]::PostMessage([IntPtr]$primaryWindow.Current.NativeWindowHandle, 0x0010, [IntPtr]::Zero, [IntPtr]::Zero)
+            [void]$primary.WaitForExit(10000)
+        }
+        if (-not $primary.HasExited) { Stop-Process -Id $primary.Id }
+        $primary.Dispose()
+        if ($null -ne $secondary) {
+            if (-not $secondary.HasExited) { Stop-Process -Id $secondary.Id }
+            $secondary.Dispose()
+        }
+    }
+}
+
+function Test-DayTooltipVisual {
+    <#
+    .SYNOPSIS
+    Uses a fresh Day-theme process and a real mouse hover to capture the quota expiry ToolTip, avoiding UIA focus state from other interaction tests.
+    #>
+    param(
+        [Parameter(Mandatory = $true)] [string]$Executable,
+        [Parameter(Mandatory = $true)] [string]$OutputDirectory
+    )
+
+    $arguments = @('--demo', '--exit-on-close', '--theme=Day', '--test-no-persist-settings', ("--instance-scope=" + [Guid]::NewGuid().ToString()))
+    $process = Start-Process -FilePath $Executable -WorkingDirectory (Split-Path -Parent $Executable) -ArgumentList $arguments -PassThru
+    $window = $null
+    try {
+        $condition = [System.Windows.Automation.AndCondition]::new(
+            [System.Windows.Automation.PropertyCondition]::new([System.Windows.Automation.AutomationElement]::ProcessIdProperty, $process.Id),
+            [System.Windows.Automation.PropertyCondition]::new([System.Windows.Automation.AutomationElement]::ControlTypeProperty, [System.Windows.Automation.ControlType]::Window))
+        $deadline = [DateTime]::UtcNow.AddSeconds(15)
+        do {
+            $process.Refresh()
+            if ($process.HasExited) { throw "Day tooltip probe exited early: $($process.ExitCode)" }
+            $window = [System.Windows.Automation.AutomationElement]::RootElement.FindFirst([System.Windows.Automation.TreeScope]::Children, $condition)
+            if ($null -eq $window) { Start-Sleep -Milliseconds 200 }
+        } while ($null -eq $window -and [DateTime]::UtcNow -lt $deadline)
+        if ($null -eq $window) { throw 'Day tooltip probe window was not found.' }
+
+        [void][UiScreenshotNative]::SetForegroundWindow([IntPtr]$window.Current.NativeWindowHandle)
+        $expiry = $window.FindFirst([System.Windows.Automation.TreeScope]::Descendants,
+            [System.Windows.Automation.PropertyCondition]::new([System.Windows.Automation.AutomationElement]::AutomationIdProperty, 'FiveHourExpiry'))
+        if ($null -eq $expiry) { throw 'Day tooltip probe expiry control was not found.' }
+        $bounds = $expiry.Current.BoundingRectangle
+        [System.Windows.Forms.Cursor]::Position = [System.Drawing.Point]::new([int]($bounds.Left + 10), [int]($bounds.Top + 8))
+        Start-Sleep -Milliseconds 1600
+        Save-WindowScreenshot -Window $window -Path (Join-Path $OutputDirectory 'tooltip-day.png') -Desktop -IncludeTooltipContext
+        Write-Output '[OK] Day tooltip visual probe completed.'
+    }
+    finally {
+        if ($null -ne $window -and -not $process.HasExited) {
+            [void][UiScreenshotNative]::PostMessage([IntPtr]$window.Current.NativeWindowHandle, 0x0010, [IntPtr]::Zero, [IntPtr]::Zero)
+            [void]$process.WaitForExit(10000)
+        }
+        if (-not $process.HasExited) { Stop-Process -Id $process.Id }
+        $process.Dispose()
+    }
+}
+
 if ([string]::IsNullOrWhiteSpace($ExecutablePath)) {
     $ExecutablePath = Join-Path $ProjectRoot 'bin\Release\net8.0-windows\CodexQuotaWidget.exe'
 }
@@ -223,7 +325,7 @@ Capture-RenderScreenshot -Executable $exe -Path $settingsShot -Settings -Theme N
 Capture-RenderScreenshot -Executable $exe -Path $freeDashboardShot -Free -Theme Night
 
 # Free accounts can have a valid monthly window and a credit balance without 5h/7d data.
-$freeProcess = Start-Process -FilePath $exe -WorkingDirectory (Split-Path -Parent $exe) -ArgumentList @('--demo-free', '--exit-on-close', '--theme=Night') -PassThru
+$freeProcess = Start-Process -FilePath $exe -WorkingDirectory (Split-Path -Parent $exe) -ArgumentList @('--demo-free', '--exit-on-close', '--test-no-persist-settings', ("--instance-scope=" + [Guid]::NewGuid().ToString()), '--theme=Night') -PassThru
 $freeWindow = $null
 try {
     $freeWindowCondition = [System.Windows.Automation.AndCondition]::new(
@@ -266,7 +368,7 @@ finally {
     if (-not $freeProcess.HasExited) { Stop-Process -Id $freeProcess.Id }
     $freeProcess.Dispose()
 }
-$process = Start-Process -FilePath $exe -WorkingDirectory (Split-Path -Parent $exe) -ArgumentList @('--demo', '--exit-on-close', '--theme=Glass', '--test-no-persist-settings') -PassThru
+$process = Start-Process -FilePath $exe -WorkingDirectory (Split-Path -Parent $exe) -ArgumentList @('--demo', '--exit-on-close', '--theme=Glass', '--test-no-persist-settings', ("--instance-scope=" + [Guid]::NewGuid().ToString())) -PassThru
 $window = $null
 try {
     $windowCondition = [System.Windows.Automation.AndCondition]::new(
@@ -289,6 +391,13 @@ try {
     [void][UiScreenshotNative]::ShowWindow([IntPtr]$window.Current.NativeWindowHandle, 5)
     [void][UiScreenshotNative]::SetForegroundWindow([IntPtr]$window.Current.NativeWindowHandle)
     Start-Sleep -Milliseconds 350
+    $initialTransformPattern = $window.GetCurrentPattern([System.Windows.Automation.TransformPattern]::Pattern)
+    if ($initialTransformPattern.Current.CanMove) {
+        # 测试专用窗口避开用户已运行的小组件，确保鼠标悬浮落在当前 UIA 目标而不是另一个置顶实例。
+        $initialArea = [System.Windows.Forms.Screen]::FromHandle([IntPtr]$window.Current.NativeWindowHandle).WorkingArea
+        $initialTransformPattern.Move($initialArea.Left + 32, $initialArea.Top + 80)
+        Start-Sleep -Milliseconds 250
+    }
     $extendedStyle = [UiScreenshotNative]::GetWindowLongPtr([IntPtr]$window.Current.NativeWindowHandle, -20).ToInt64()
     if (($extendedStyle -band 0x40000) -ne 0) {
         throw 'Widget window still registers as a taskbar application.'
@@ -328,23 +437,18 @@ try {
         [System.Windows.Automation.PropertyCondition]::new([System.Windows.Automation.AutomationElement]::AutomationIdProperty, 'ThemeButton'))
     $initialThemeName = $themeButton.Current.Name
     foreach ($index in 1..3) {
+        $previousThemeName = $themeButton.Current.Name
         Invoke-NavigationElement -Element $themeButton
-        Start-Sleep -Milliseconds 180
+        $themeDeadline = [DateTime]::UtcNow.AddSeconds(2)
+        do {
+            Start-Sleep -Milliseconds 100
+        } while ($themeButton.Current.Name -eq $previousThemeName -and [DateTime]::UtcNow -lt $themeDeadline)
+        if ($themeButton.Current.Name -eq $previousThemeName) { throw "Theme button did not advance from: $previousThemeName" }
     }
     if ($themeButton.Current.Name -ne $initialThemeName) { throw "Theme cycle did not return to its initial state: $initialThemeName -> $($themeButton.Current.Name)" }
     Write-Output '[OK] Theme button completed a full three-theme cycle without persisting user settings.'
     Save-WindowScreenshot -Window $window -Path (Join-Path $output 'dashboard-printwindow.png')
     Save-WindowScreenshot -Window $window -Path (Join-Path $output 'desktop-glass.png') -Desktop
-    $fiveHourExpiry = $window.FindFirst([System.Windows.Automation.TreeScope]::Descendants,
-        [System.Windows.Automation.PropertyCondition]::new([System.Windows.Automation.AutomationElement]::AutomationIdProperty, 'FiveHourExpiry'))
-    if ($null -eq $fiveHourExpiry) { throw 'Five-hour expiry control is unavailable for tooltip verification.' }
-    $expiryBounds = $fiveHourExpiry.Current.BoundingRectangle
-    [System.Windows.Forms.Cursor]::Position = [System.Drawing.Point]::new([int]($expiryBounds.Left + 8), [int]($expiryBounds.Top + 8))
-    Start-Sleep -Milliseconds 900
-    Save-WindowScreenshot -Window $window -Path (Join-Path $output 'tooltip-glass.png') -Desktop -IncludeTooltipContext
-    [System.Windows.Forms.Cursor]::Position = [System.Drawing.Point]::new(0, 0)
-    Start-Sleep -Milliseconds 500
-
     Invoke-NavigationElement -Element @($settingsRail)[0]
     $refreshIntervalLabel = if ($dashboardLabel -eq 'Dashboard') { 'Refresh interval' } else { '刷新间隔' }
     $settingsReady = Wait-DescendantByAutomationId -Window $window -AutomationId 'RefreshIntervalComboBox' -TimeoutMilliseconds 2500
@@ -514,3 +618,6 @@ finally {
     }
     $process.Dispose()
 }
+
+Test-DayTooltipVisual -Executable $exe -OutputDirectory $output
+Test-SingleInstanceActivation -Executable $exe

@@ -119,7 +119,14 @@
                                               RecognizesAccessKey="True"
                                               TextElement.Foreground="{TemplateBinding Foreground}"
                                               TextElement.FontFamily="{TemplateBinding FontFamily}"
-                                              TextElement.FontSize="{TemplateBinding FontSize}" />
+                                              TextElement.FontSize="{TemplateBinding FontSize}">
+                                <ContentPresenter.Resources>
+                                    <!-- ToolTip 字符串会自动生成 TextBlock；局部样式必须覆盖全局正文深色样式，避免白天主题出现无文字黑块。 -->
+                                    <Style TargetType="TextBlock">
+                                        <Setter Property="Foreground" Value="{DynamicResource TooltipTextBrush}" />
+                                    </Style>
+                                </ContentPresenter.Resources>
+                            </ContentPresenter>
                         </Border>
                     </ControlTemplate>
                 </Setter.Value>

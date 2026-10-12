@@ -49,6 +49,7 @@ internal static class Program
                 CheckMembershipPresentation();
                 CheckFreePresentationAsync().GetAwaiter().GetResult();
                 CheckStaleSnapshotAsync().GetAwaiter().GetResult();
+                CheckSingleInstanceCoordinator();
                 CheckDesktopRestartHelperAsync().GetAwaiter().GetResult();
                 CheckProtocolAsync().GetAwaiter().GetResult();
                 CheckDispatcher(new CountingProvider(), live: false);
@@ -248,6 +249,46 @@ internal static class Program
         finally
         {
             viewModel.Dispose();
+        }
+    }
+
+    /// <summary>验证同一用户会话只能取得一个主实例，后续协调器能通知主实例的 Dispatcher 执行激活回调而不创建第二个窗口。</summary>
+    private static void CheckSingleInstanceCoordinator()
+    {
+        var scope = "quota-check-" + Guid.NewGuid().ToString("N");
+        using var primary = new SingleInstanceCoordinator(scope);
+        Check(primary.TryBecomePrimary(), "首个小组件进程获得单实例所有权");
+
+        var dispatcher = Dispatcher.CurrentDispatcher;
+        using var activated = new ManualResetEventSlim();
+        var frame = new DispatcherFrame();
+        var timeout = new DispatcherTimer { Interval = TimeSpan.FromSeconds(3) };
+        EventHandler? timeoutHandler = null;
+        timeoutHandler = (_, _) =>
+        {
+            timeout.Stop();
+            frame.Continue = false;
+        };
+        timeout.Tick += timeoutHandler;
+        primary.BeginActivationListener(dispatcher, () =>
+        {
+            activated.Set();
+            frame.Continue = false;
+        });
+
+        using var secondary = new SingleInstanceCoordinator(scope);
+        try
+        {
+            Check(!secondary.TryBecomePrimary(), "第二个小组件进程不能取得单实例所有权");
+            Check(secondary.SignalPrimary(TimeSpan.FromSeconds(2)), "第二个小组件进程可通知主实例置前");
+            timeout.Start();
+            Dispatcher.PushFrame(frame);
+            Check(activated.IsSet, "主实例在 Dispatcher 中接收到激活通知");
+        }
+        finally
+        {
+            timeout.Stop();
+            timeout.Tick -= timeoutHandler;
         }
     }
 

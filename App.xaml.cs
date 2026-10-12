@@ -13,20 +13,30 @@ public partial class App : System.Windows.Application
 {
     private Forms.NotifyIcon? trayIcon;
     private Icon? applicationIcon;
+    private SingleInstanceCoordinator? singleInstance;
     private WidgetSettings settings = new();
 
-    /// <summary>
-    /// 显式创建并显示主窗口；应用不再修改 Windows 的开机启动项。
-    /// </summary>
+    /// <summary>在创建任何窗口或托盘图标前取得主实例资格；后续进程只通知已有小组件置前并立即结束。</summary>
     protected override void OnStartup(StartupEventArgs e)
     {
         base.OnStartup(e);
+        var suppressPersistenceForAutomation = e.Args.Any(argument => string.Equals(argument, "--test-no-persist-settings", StringComparison.OrdinalIgnoreCase));
+        singleInstance = new SingleInstanceCoordinator(GetAutomatedTestInstanceScope(e.Args, suppressPersistenceForAutomation));
+        if (!singleInstance.TryBecomePrimary())
+        {
+            singleInstance.SignalPrimary(TimeSpan.FromSeconds(2));
+            singleInstance.Dispose();
+            singleInstance = null;
+            Shutdown();
+            return;
+        }
+
         settings = WidgetSettingsStore.Load();
         settings = ApplyCommandLineThemeOverride(settings, e.Args);
-        var suppressPersistenceForAutomation = e.Args.Any(argument => string.Equals(argument, "--test-no-persist-settings", StringComparison.OrdinalIgnoreCase));
         MainWindow = new MainWindow(settings, suppressPersistenceForAutomation ? _ => { } : SaveSettings);
         CreateTrayIcon();
         MainWindow.Show();
+        singleInstance.BeginActivationListener(Dispatcher, ShowMainWindow);
     }
 
     /// <summary>仅为 UI 验证接受临时主题参数；结合测试专用不持久化参数时，演示主题循环不会改写用户真实偏好。</summary>
@@ -39,6 +49,20 @@ public partial class App : System.Windows.Application
         }
 
         return current with { Theme = WidgetSettingsStore.Normalize(current with { Theme = theme }).Theme };
+    }
+
+    /// <summary>仅在自动化无持久化模式下接受 GUID 作用域，隔离测试进程而不为普通用户提供绕过单实例限制的启动参数。</summary>
+    private static string? GetAutomatedTestInstanceScope(IEnumerable<string> arguments, bool automationMode)
+    {
+        if (!automationMode)
+        {
+            return null;
+        }
+
+        var value = arguments.FirstOrDefault(argument => argument.StartsWith("--instance-scope=", StringComparison.OrdinalIgnoreCase));
+        return value is not null && Guid.TryParse(value["--instance-scope=".Length..], out var scope)
+            ? "test-" + scope.ToString("N")
+            : null;
     }
 
     /// <summary>创建托盘图标；菜单会随语言设置重建，但始终只提供主界面和退出两个操作。</summary>
@@ -96,7 +120,7 @@ public partial class App : System.Windows.Application
         ShowMainWindow();
     }
 
-    /// <summary>恢复或激活唯一主窗口；窗口关闭按钮只隐藏到托盘，不应在此重新创建实例。</summary>
+    /// <summary>恢复或激活唯一主窗口；窗口关闭按钮只隐藏到托盘，二次启动也复用此路径而不重新创建实例。</summary>
     private void ShowMainWindow()
     {
         if (MainWindow is not MainWindow window)
@@ -111,7 +135,16 @@ public partial class App : System.Windows.Application
 
         if (window.WindowState == WindowState.Minimized)
             window.WindowState = WindowState.Normal;
+
+        // 临时置前后还原用户的图钉偏好，既能让隐藏窗口在第二次启动时可见，也不强行改变长期置顶设置。
+        var wasTopmost = window.Topmost;
+        window.Topmost = true;
         window.Activate();
+        window.Focus();
+        if (!wasTopmost)
+        {
+            _ = Dispatcher.BeginInvoke(() => window.Topmost = false);
+        }
     }
 
     /// <summary>通过已有托盘图标展示短暂的重启结果，不额外创建会出现在任务栏中的提示窗口。</summary>
@@ -134,6 +167,8 @@ public partial class App : System.Windows.Application
     /// <summary>应用退出时释放托盘图标，即使窗口通过系统消息关闭也不遗留图标。</summary>
     protected override void OnExit(ExitEventArgs e)
     {
+        singleInstance?.Dispose();
+        singleInstance = null;
         var menu = trayIcon?.ContextMenuStrip;
         trayIcon?.Dispose();
         trayIcon = null;
