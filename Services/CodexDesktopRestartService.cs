@@ -22,19 +22,39 @@ internal sealed class CodexDesktopRestartService
     private static readonly JsonSerializerOptions HelperJsonOptions = new() { PropertyNameCaseInsensitive = true };
     private static readonly Regex RunIdPattern = new("^\\d{8}-\\d{6}-[a-f0-9]{8}$", RegexOptions.CultureInvariant | RegexOptions.IgnoreCase);
     private readonly string? testHelperScriptPath;
+    private readonly string? testDirectHelperScriptPath;
     private readonly string? testPowerShellPath;
 
     /// <summary>创建发布版服务；可选路径仅供同程序集回归测试注入，主窗口从不读取环境变量来替换隐藏执行入口。</summary>
-    internal CodexDesktopRestartService(string? helperScriptPath = null, string? powerShellPath = null)
+    internal CodexDesktopRestartService(string? helperScriptPath = null, string? powerShellPath = null, string? directHelperScriptPath = null)
     {
         testHelperScriptPath = helperScriptPath;
         testPowerShellPath = powerShellPath;
+        testDirectHelperScriptPath = directHelperScriptPath;
     }
 
-    /// <summary>调用桌面端专用重启助手并解析其最终状态；强制结束仅能由界面的第二次明确确认传入，默认失败时保持当前 Codex 进程不变。</summary>
-    internal async Task<CodexDesktopRestartResult> RestartAsync(CancellationToken cancellationToken, bool forceAfterTimeout = false)
+    /// <summary>保留旧的优雅重启入口供隔离回归覆盖；产品按钮不再调用此路径，以免会话快照、正常关闭等待和健康检查阻塞直接重启。</summary>
+    internal Task<CodexDesktopRestartResult> RestartAsync(CancellationToken cancellationToken, bool forceAfterTimeout = false)
     {
-        var scriptPath = FindHelperScriptPath(testHelperScriptPath);
+        var arguments = forceAfterTimeout ? new[] { "-ForceAfterTimeout" } : Array.Empty<string>();
+        return RunHelperAsync(cancellationToken, "Restart-CodexDesktop.ps1", testHelperScriptPath, arguments);
+    }
+
+    /// <summary>直接强制重启精确匹配的 ChatGPT Desktop 包进程；该路径不读取会话快照、不尝试恢复会话，也绝不匹配或关闭 CLI、终端或同名外部进程。</summary>
+    internal Task<CodexDesktopRestartResult> DirectRestartAsync(CancellationToken cancellationToken)
+    {
+        return RunHelperAsync(cancellationToken, "Direct-Restart-CodexDesktop.ps1", testDirectHelperScriptPath, ["-DirectForce"]);
+    }
+
+    /// <summary>以固定脚本名、受信任 PowerShell 和显式额外参数启动发布包内助手；取消发生在启动前时不创建子进程，之后只停止等待而不杀未知状态的助手。</summary>
+    private async Task<CodexDesktopRestartResult> RunHelperAsync(CancellationToken cancellationToken, string helperFileName, string? injectedTestPath, IReadOnlyList<string> helperArguments)
+    {
+        if (cancellationToken.IsCancellationRequested)
+        {
+            return CodexDesktopRestartResult.Cancelled;
+        }
+
+        var scriptPath = FindHelperScriptPath(injectedTestPath, helperFileName);
         if (scriptPath is null)
         {
             return CodexDesktopRestartResult.Unavailable;
@@ -48,12 +68,16 @@ internal sealed class CodexDesktopRestartService
 
         using var process = new Process
         {
-            StartInfo = CreateStartInfo(shell, scriptPath, forceAfterTimeout),
+            StartInfo = CreateStartInfo(shell, scriptPath, helperArguments),
             EnableRaisingEvents = true
         };
         try
         {
             var startedAt = DateTimeOffset.UtcNow;
+            if (cancellationToken.IsCancellationRequested)
+            {
+                return CodexDesktopRestartResult.Cancelled;
+            }
             if (!process.Start())
             {
                 return CodexDesktopRestartResult.Unavailable;
@@ -86,8 +110,8 @@ internal sealed class CodexDesktopRestartService
         }
     }
 
-    /// <summary>构造固定参数的隐藏 PowerShell 7 子进程；仅 <c>Desktop</c> 模式可关闭 GUI，强制参数必须由调用方的二次确认显式传入。</summary>
-    private static ProcessStartInfo CreateStartInfo(string shell, string scriptPath, bool forceAfterTimeout)
+    /// <summary>构造固定参数的隐藏 PowerShell 7 子进程；仅发布包内指定的 Desktop 模式脚本可关闭 GUI，额外动作参数必须由受限调用入口显式给出。</summary>
+    private static ProcessStartInfo CreateStartInfo(string shell, string scriptPath, IReadOnlyList<string> helperArguments)
     {
         var startInfo = new ProcessStartInfo
         {
@@ -108,9 +132,9 @@ internal sealed class CodexDesktopRestartService
         startInfo.ArgumentList.Add("-Mode");
         startInfo.ArgumentList.Add("Desktop");
         startInfo.ArgumentList.Add("-Execute");
-        if (forceAfterTimeout)
+        foreach (var argument in helperArguments)
         {
-            startInfo.ArgumentList.Add("-ForceAfterTimeout");
+            startInfo.ArgumentList.Add(argument);
         }
         return startInfo;
     }
@@ -224,24 +248,24 @@ internal sealed class CodexDesktopRestartService
     {
         return state switch
         {
-            "desktop_relaunched_manifest_ready" => CodexDesktopRestartResult.Relaunched,
+            "desktop_relaunched_manifest_ready" or "direct_desktop_relaunched" => CodexDesktopRestartResult.Relaunched,
             "desktop_relaunched_login_user_action_required" => CodexDesktopRestartResult.LoginRequired,
             "desktop_close_timeout_needs_force_confirmation" => CodexDesktopRestartResult.NeedsManualClose,
             "desktop_restart_not_ready" or "restart_rejected" => CodexDesktopRestartResult.Unavailable,
-            "desktop_launch_timeout" or "desktop_relaunched_health_unverified" or "failed" => CodexDesktopRestartResult.Failed,
+            "desktop_launch_timeout" or "desktop_relaunched_health_unverified" or "direct_force_close_incomplete" or "direct_desktop_launch_timeout" or "direct_restart_failed" or "failed" => CodexDesktopRestartResult.Failed,
             _ => exitCode == 0 ? CodexDesktopRestartResult.Unavailable : CodexDesktopRestartResult.Failed
         };
     }
 
-    /// <summary>优先使用程序集内测试注入的脚本；发布路径始终固定在应用目录，避免继承环境变量把隐藏点击重定向到任意脚本。</summary>
-    private static string? FindHelperScriptPath(string? injectedTestPath)
+    /// <summary>优先使用程序集内测试注入的脚本；发布路径始终固定在应用目录和给定文件名，避免继承环境变量把隐藏点击重定向到任意脚本。</summary>
+    private static string? FindHelperScriptPath(string? injectedTestPath, string helperFileName)
     {
         if (!string.IsNullOrWhiteSpace(injectedTestPath))
         {
             return Path.IsPathFullyQualified(injectedTestPath) && File.Exists(injectedTestPath) ? injectedTestPath : null;
         }
 
-        var installed = Path.Combine(AppContext.BaseDirectory, "restart", "Restart-CodexDesktop.ps1");
+        var installed = Path.Combine(AppContext.BaseDirectory, "restart", helperFileName);
         return File.Exists(installed) ? installed : null;
     }
 
@@ -377,10 +401,10 @@ internal sealed class CodexDesktopRestartService
     private static extern uint WinVerifyTrust(IntPtr windowHandle, ref Guid actionId, IntPtr trustData);
 }
 
-/// <summary>归纳桌面端重启助手的安全结果，调用方只能据此显示提示，不能从状态推断未完成会话已自动恢复。</summary>
+/// <summary>归纳 Desktop 重启助手的受限结果；调用方只能据此显示进程级结果，不能从状态推断登录、未保存内容或会话已恢复。</summary>
 internal enum CodexDesktopRestartResult
 {
-    /// <summary>重启助手已确认重新打开桌面端并准备好恢复清单，未完成线程仍须用户手动继续。</summary>
+    /// <summary>直接路径已观察到新的精确 ChatGPT Desktop 根进程，或旧兼容路径完成重启；两者都不保证登录或内容恢复。</summary>
     Relaunched,
 
     /// <summary>桌面端已重新打开但缓存登录不能复用，用户需要在桌面端完成登录。</summary>

@@ -48,6 +48,135 @@ function New-RestartRun {
     return New-CodexDesktopRestartRun -RunRoot $RunRoot
 }
 
+function Get-EffectiveGraceSeconds {
+    <#
+    .SYNOPSIS
+    Preserves the full normal-close window on a first attempt, but keeps only a final one-second grace window after the user has already confirmed force-close following a prior timeout.
+    #>
+    param(
+        [ValidateRange(1, 90)]
+        [int]$NormalGraceSeconds,
+
+        [bool]$ForceCloseConfirmed
+    )
+
+    if ($ForceCloseConfirmed) {
+        return 1
+    }
+
+    return $NormalGraceSeconds
+}
+
+function Wait-ForSupervisorReady {
+    <#
+    .SYNOPSIS
+    Waits for a detached supervisor to validate this exact manifest before the parent reports that any Desktop work is scheduled.
+    #>
+    param(
+        [Parameter(Mandatory = $true)]
+        [string]$ReadyPath,
+
+        [Parameter(Mandatory = $true)]
+        [string]$RunId,
+
+        [Parameter(Mandatory = $true)]
+        [int]$SupervisorPid,
+
+        [ValidateRange(1, 15)]
+        [int]$TimeoutSeconds = 8
+    )
+
+    $deadline = (Get-Date).AddSeconds($TimeoutSeconds)
+    do {
+        if (Test-Path -LiteralPath $ReadyPath -PathType Leaf) {
+            try {
+                $ready = Get-Content -LiteralPath $ReadyPath -Raw -ErrorAction Stop | ConvertFrom-Json -Depth 10
+                if ([string]::Equals([string]$ready.run_id, $RunId, [StringComparison]::Ordinal) -and [string]$ready.state -eq 'supervisor_ready') {
+                    return $true
+                }
+            }
+            catch {
+                # 监督器以原子替换写标记；短暂的读取竞争应等待下一轮。
+            }
+        }
+
+        if ($null -eq (Get-Process -Id $SupervisorPid -ErrorAction SilentlyContinue)) {
+            return $false
+        }
+        Start-Sleep -Milliseconds 150
+    } while ((Get-Date) -lt $deadline)
+
+    return $false
+}
+
+function Start-VerifiedSupervisor {
+    <#
+    .SYNOPSIS
+    Starts the detached supervisor, verifies its run-bound readiness proof, and only then grants the run-bound permit that allows any Desktop close action.
+    #>
+    param(
+        [Parameter(Mandatory = $true)]
+        [object]$Run,
+
+        [Parameter(Mandatory = $true)]
+        [string]$ManifestPath,
+
+        [switch]$ForceAfterTimeout,
+
+        [switch]$Simulate
+    )
+
+    $readyPath = Join-Path -Path ([string]$Run.path) -ChildPath 'supervisor-ready.json'
+    $permitPath = Join-Path -Path ([string]$Run.path) -ChildPath 'supervisor-permit.json'
+    $supervisor = Start-CodexDesktopRestartSupervisor -SupervisorScript $supervisorPath -ManifestPath $ManifestPath -RunId ([string]$Run.id) -ReadyPath $readyPath -PermitPath $permitPath -ForceAfterTimeout:$ForceAfterTimeout -Simulate:$Simulate
+    $isReady = Wait-ForSupervisorReady -ReadyPath $readyPath -RunId ([string]$Run.id) -SupervisorPid ([int]$supervisor.pid)
+    if ($isReady) {
+        # 只有本次 run 的 ready 标记已验证，父脚本才会写入允许关闭 Desktop 的绑定许可。
+        Write-AtomicJson -Value ([ordered]@{
+                run_id = [string]$Run.id
+                state = 'supervisor_authorized'
+                authorized_at = (Get-Date).ToUniversalTime().ToString('o')
+            }) -Path $permitPath
+    }
+    return [pscustomobject]@{
+        ready = [bool]$isReady
+        pid = [int]$supervisor.pid
+        ready_path = $readyPath
+        permit_path = $permitPath
+    }
+}
+
+function Write-SupervisorBootstrapFailure {
+    <#
+    .SYNOPSIS
+    Persists a non-sensitive terminal outcome when the detached child never proves readiness, guaranteeing that no Desktop close was attempted by that child.
+    #>
+    param(
+        [Parameter(Mandatory = $true)]
+        [object]$Run,
+
+        [Parameter(Mandatory = $true)]
+        [string]$Mode,
+
+        [Parameter(Mandatory = $true)]
+        [string]$ReportPath,
+
+        [Parameter(Mandatory = $true)]
+        [int]$SupervisorPid
+    )
+
+    Write-AtomicJson -Value ([ordered]@{
+            schema_version = 1
+            run_id = [string]$Run.id
+            mode = $Mode
+            state = 'supervisor_bootstrap_failed'
+            failure_stage = 'bootstrap'
+            supervisor_pid = $SupervisorPid
+            message = 'Desktop 监督进程未在关闭动作前证明已就绪；现有 Desktop 未被关闭。'
+            finished_at = (Get-Date).ToUniversalTime().ToString('o')
+        }) -Path $ReportPath
+}
+
 function New-SimulationManifest {
     param(
         [Parameter(Mandatory = $true)]
@@ -69,7 +198,7 @@ function New-SimulationManifest {
         desktop = $Fixture.desktop
         captured_processes = @($Fixture.captured_processes)
         session_snapshot = $Fixture.session_snapshot
-        grace_seconds = 5
+        grace_seconds = Get-EffectiveGraceSeconds -NormalGraceSeconds 5 -ForceCloseConfirmed ([bool]$ForceAfterTimeout)
         launch_timeout_seconds = 5
         force_after_timeout = [bool]$ForceAfterTimeout
         recovery_contract = '检测到的线程只能标记为 interrupted_requires_manual_resume；模拟和桌面重启均不会调用 thread/resume。'
@@ -110,14 +239,28 @@ try {
         $manifest = New-SimulationManifest -Fixture $fixture -Run $run
         Write-AtomicJson -Value $manifest -Path $manifestPath
         Write-ManifestChecksum -ManifestPath $manifestPath
-        $supervisorPid = Start-CodexDesktopRestartSupervisor -SupervisorScript $supervisorPath -ManifestPath $manifestPath -ForceAfterTimeout:$ForceAfterTimeout -Simulate
+        $reportPath = Join-Path -Path $run.path -ChildPath 'restart-report.json'
+        $supervisor = Start-VerifiedSupervisor -Run $run -ManifestPath $manifestPath -ForceAfterTimeout:$ForceAfterTimeout -Simulate
+        if (-not $supervisor.ready) {
+            Write-SupervisorBootstrapFailure -Run $run -Mode 'simulation' -ReportPath $reportPath -SupervisorPid ([int]$supervisor.pid)
+            Write-RestartResult -Value ([ordered]@{
+                    state = 'supervisor_bootstrap_failed'
+                    message = '重启监督器未能安全启动；模拟模式未调用任何真实 Desktop 操作。'
+                    manifestPath = $manifestPath
+                    reportPath = $reportPath
+                    runId = $run.id
+                    supervisorPid = $supervisor.pid
+                    exitCode = 1
+                })
+            exit 1
+        }
         Write-RestartResult -Value ([ordered]@{
                 state = 'simulation_scheduled'
                 message = '已启动隔离模拟监督进程；它不调用 AppX、CIM、codex CLI、关闭或启动真实桌面应用。'
                 manifestPath = $manifestPath
-                reportPath = (Join-Path -Path $run.path -ChildPath 'restart-report.json')
+                reportPath = $reportPath
                 runId = $run.id
-                supervisorPid = $supervisorPid
+                supervisorPid = $supervisor.pid
                 exitCode = 0
             })
         exit 0
@@ -162,7 +305,7 @@ try {
         desktop = $inspection.desktop
         captured_processes = @($inspection.captured_processes)
         session_snapshot = $inspection.session_snapshot
-        grace_seconds = $GraceSeconds
+        grace_seconds = Get-EffectiveGraceSeconds -NormalGraceSeconds $GraceSeconds -ForceCloseConfirmed ([bool]$ForceAfterTimeout)
         launch_timeout_seconds = $LaunchTimeoutSeconds
         force_after_timeout = [bool]$ForceAfterTimeout
         recovery_contract = '桌面端进行中的回合只会标记为 interrupted_requires_manual_resume。重启后需要在 ChatGPT Desktop 中由用户确认或继续；不承诺自动恢复。'
@@ -170,14 +313,28 @@ try {
     }
     Write-AtomicJson -Value $manifest -Path $manifestPath
     Write-ManifestChecksum -ManifestPath $manifestPath
-    $supervisorPid = Start-CodexDesktopRestartSupervisor -SupervisorScript $supervisorPath -ManifestPath $manifestPath -ForceAfterTimeout:$ForceAfterTimeout
+    $reportPath = Join-Path -Path $run.path -ChildPath 'restart-report.json'
+    $supervisor = Start-VerifiedSupervisor -Run $run -ManifestPath $manifestPath -ForceAfterTimeout:$ForceAfterTimeout
+    if (-not $supervisor.ready) {
+        Write-SupervisorBootstrapFailure -Run $run -Mode 'desktop' -ReportPath $reportPath -SupervisorPid ([int]$supervisor.pid)
+        Write-RestartResult -Value ([ordered]@{
+                state = 'supervisor_bootstrap_failed'
+                message = '重启监督器未能在关闭 Desktop 前证明已就绪；现有 Desktop 未被关闭。'
+                manifestPath = $manifestPath
+                reportPath = $reportPath
+                runId = $run.id
+                supervisorPid = $supervisor.pid
+                exitCode = 1
+            })
+        exit 1
+    }
     Write-RestartResult -Value ([ordered]@{
             state = 'desktop_restart_scheduled'
             message = '已创建最小恢复清单并启动 Desktop 专用监督进程。缓存 ChatGPT 登录会被验证，但不会自动绕过 SSO、MFA 或通行密钥。'
             manifestPath = $manifestPath
-            reportPath = (Join-Path -Path $run.path -ChildPath 'restart-report.json')
+            reportPath = $reportPath
             runId = $run.id
-            supervisorPid = $supervisorPid
+            supervisorPid = $supervisor.pid
             exitCode = 0
         })
     exit 0

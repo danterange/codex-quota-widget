@@ -33,7 +33,6 @@ public partial class MainWindow : Window
     private bool suppressUserResizeTracking;
     private bool backdropAvailable;
     private bool restartInProgress;
-    private bool forceRestartArmed;
     private int captureAttempts;
     private DispatcherTimer? captureRetryTimer;
     private DispatcherTimer? autoSizingFallbackTimer;
@@ -73,7 +72,7 @@ public partial class MainWindow : Window
         await viewModel.RefreshNowAsync();
     }
 
-    /// <summary>从小组件发起桌面端专用重启；首次只请求正常关闭，超时后必须由第二次点击和对话框明确确认才允许精确强制结束。</summary>
+    /// <summary>在用户明确确认后直接强制关闭并重新打开 ChatGPT Desktop；不等待优雅退出、不保存或恢复会话，且不会调用 CLI 或终端进程。</summary>
     private async void RestartCodexClicked(object sender, RoutedEventArgs e)
     {
         if (restartInProgress)
@@ -81,13 +80,11 @@ public partial class MainWindow : Window
             return;
         }
 
-        var forceAfterTimeout = forceRestartArmed;
-        if (forceAfterTimeout && !ConfirmForceRestart())
+        if (!ConfirmDirectRestart())
         {
             return;
         }
 
-        forceRestartArmed = false;
         restartInProgress = true;
         RestartCodexButton.IsEnabled = false;
         RestartCodexButton.ToolTip = viewModel.Text.RestartCodexPreparing;
@@ -96,8 +93,7 @@ public partial class MainWindow : Window
         ShowRestartNotice(viewModel.Text.RestartCodexPreparing, "AccentBrush");
         try
         {
-            var result = await restartService.RestartAsync(restartLifetime.Token, forceAfterTimeout);
-            forceRestartArmed = result == CodexDesktopRestartResult.NeedsManualClose;
+            var result = await restartService.DirectRestartAsync(restartLifetime.Token);
             var message = GetRestartResultMessage(result);
             SettingsStatusTextBlock.Text = message;
             SettingsStatusTextBlock.ToolTip = message;
@@ -115,8 +111,8 @@ public partial class MainWindow : Window
         }
     }
 
-    /// <summary>在正常关闭超时后要求用户再次确认精确强制关闭，避免一次普通图标点击意外丢弃未保存的 Desktop 内容。</summary>
-    private bool ConfirmForceRestart()
+    /// <summary>在触发不可恢复的 Desktop 进程终止前请求一次确认，并将默认焦点放在取消，避免图标误触中断未保存内容。</summary>
+    private bool ConfirmDirectRestart()
     {
         return System.Windows.MessageBox.Show(
                    this,
@@ -128,7 +124,7 @@ public partial class MainWindow : Window
                == System.Windows.MessageBoxResult.Yes;
     }
 
-    /// <summary>根据是否已获得强制关闭资格更新重启按钮说明，使下一次点击的副作用在鼠标悬停和辅助技术中可见。</summary>
+    /// <summary>根据当前语言更新直接重启按钮说明；确认框会明确说明内容丢失和 CLI 隔离边界，不把破坏性效果隐藏在图标之后。</summary>
     private void UpdateRestartButtonPresentation()
     {
         if (RestartCodexButton is null || viewModel is null)
@@ -136,7 +132,7 @@ public partial class MainWindow : Window
             return;
         }
 
-        var tooltip = forceRestartArmed ? viewModel.Text.RestartCodexNeedsManualClose : viewModel.Text.RestartCodexTooltip;
+        var tooltip = viewModel.Text.RestartCodexTooltip;
         RestartCodexButton.ToolTip = tooltip;
         System.Windows.Automation.AutomationProperties.SetHelpText(RestartCodexButton, tooltip);
     }
@@ -187,7 +183,7 @@ public partial class MainWindow : Window
         restartNoticeTimer = null;
     }
 
-    /// <summary>将安全助手的内部状态映射为准确的本地化提示，成功只表示桌面端重启且恢复清单就绪，不表示流式会话已恢复。</summary>
+    /// <summary>将直接重启助手的受限状态映射为准确的本地化提示；成功只表示新 Desktop 根进程已出现，不表示登录、未保存内容或会话得到恢复。</summary>
     private string GetRestartResultMessage(CodexDesktopRestartResult result)
     {
         return result switch
@@ -306,7 +302,7 @@ public partial class MainWindow : Window
         UpdateRestartButtonPresentation();
     }
 
-    /// <summary>用当前主题名称和“下一次点击的效果”更新无文字图标的悬浮提示及辅助功能名称。</summary>
+    /// <summary>用当前主题名称、下一次点击效果及玻璃回退原因更新无文字图标的悬浮提示和辅助功能名称。</summary>
     private void UpdateThemeButtonPresentation()
     {
         if (ThemeButton is null || ThemeGlyph is null || viewModel is null)
@@ -320,6 +316,10 @@ public partial class MainWindow : Window
             WidgetTheme.Glass => (viewModel.Text.ThemeGlass, viewModel.Text.ThemeGlassTooltip, "M4,12 C4,7 8,4 12,4 C16,4 20,7 20,12 C20,17 16,20 12,20 C8,20 4,17 4,12 M7,12 H17 M12,7 V17"),
             _ => (viewModel.Text.ThemeNight, viewModel.Text.ThemeNightTooltip, "M15,3 A9,9 0 1 0 21,15 A7,7 0 0 1 15,3")
         };
+        if (settings.Theme == WidgetTheme.Glass && !backdropAvailable && !SystemParameters.HighContrast)
+        {
+            tooltip = viewModel.Text.ThemeGlassFallbackTooltip;
+        }
         ThemeGlyph.Data = Geometry.Parse(glyph);
         ThemeButton.ToolTip = tooltip;
         System.Windows.Automation.AutomationProperties.SetName(ThemeButton, name);

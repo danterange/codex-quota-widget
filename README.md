@@ -25,10 +25,11 @@ Windows 桌面额度小组件，用紧凑的玻璃渐变界面显示当前 Codex
 - 支持简体中文和 English；语言、刷新间隔保存在当前 Windows 用户配置中。
 - 支持夜间默认、白天和高透明玻璃三套主题；标题栏中的主题图标每次点击循环切换，当前主题和下一主题效果都写在悬浮提示中，并会保存到当前 Windows 用户配置。
 - 默认宽度 320 像素，支持自由调整大小；自定义标题栏提供最小化、最大化/还原、置顶切换和关闭，默认置顶。关闭隐藏到托盘，完全退出使用托盘菜单。
-- 标题栏从左到右提供“优雅重启 Codex Desktop”、主题、贴角、置顶、最小化、最大化/还原和关闭图标；所有图标及关键信息文字都有悬浮提示和辅助功能名称。
+- 标题栏从左到右提供“重启 ChatGPT Desktop”、主题、贴角、置顶、最小化、最大化/还原和关闭图标；所有图标及关键信息文字都有悬浮提示和辅助功能名称。
 - 小组件是当前 Windows 用户会话内的单实例应用：再次启动时不会新开窗口，而会恢复、置前已有小组件并让新进程退出。
 - 置顶按钮左侧提供“贴到最近角落”；按当前位置吸附到显示器工作区的左上、右上、左下或右下角，边缘保留 2 像素并避开任务栏，同时自动回到刚好容纳当前页面内容的紧凑尺寸。
-- Windows 11 22H2 及以上支持 Acrylic 背景模糊与渐变；旧系统及高对比度环境回退到可读的不透明系统配色。
+- Windows 11 22H2 及以上在“设置 → 个性化 → 颜色 → 透明效果”开启时支持 Acrylic 背景模糊与渐变；关闭该系统开关、旧系统或高对比度环境会回退到可读的不透明配色，并在玻璃主题图标的悬浮提示中说明原因。
+- 玻璃主题采用分层透明度：外壳约 38–44% 不透明，让桌面颜色和轮廓透出；额度卡片约 60–65% 不透明，确保小字号日期和百分比仍清晰。
 - 日期悬浮提示使用深色半透明高对比度样式，完整完成时间在浅色桌面上也清晰可读。
 - 托盘菜单支持打开主界面和退出小组件，双击托盘图标也会打开主界面。
 - 只在系统托盘保留图标，不占用任务栏；最小化或关闭后，从托盘菜单“主界面”或双击托盘图标恢复。
@@ -49,20 +50,19 @@ Free 的月度窗口来自明确返回的 `windowDurationMins=43200`；剩余额
 
 令牌只在进程内解析，不写入日志、配置文件或界面。
 
-## Codex Desktop 优雅重启
+## ChatGPT Desktop 直接重启
 
-标题栏最左侧的循环箭头只针对 **ChatGPT Desktop / OpenAI.Codex MSIX**，不关闭、不重启也不恢复任何 `codex` CLI 会话。它会先检查精确的 MSIX 安装路径、当前 Desktop 根进程和仅含会话 UUID 的最小快照；任一安全条件不满足时会拒绝关闭现有 Desktop。
+标题栏最左侧的循环箭头只针对 **ChatGPT Desktop / OpenAI.Codex MSIX**。确认后，它会立即强制结束本次捕获且精确匹配安装路径、PID 和创建时间的 Desktop 包内进程，再通过已验证的 AUMID 重新打开 Desktop；不会按名称匹配或关闭任何 `codex` CLI、终端或其他程序。
 
-- 正常路径只发送 Desktop 的正常关闭请求；若超时，第一次点击不会强制结束进程，用户必须再次点击并在警告对话框明确确认，才会仅结束已捕获且精确匹配包路径的 Desktop 进程。
-- 重新打开后会验证已有 ChatGPT 登录缓存。SSO、MFA、通行密钥或过期登录必须由用户完成，程序不会自动代填或绕过认证。
-- 正在流式生成的桌面端会话没有可验证的公开“无缝续传”接口，因此恢复清单统一标记为需用户确认/手动继续；“Desktop 已重新打开”不代表原回合已自动恢复。
-- 助手需要 PowerShell 7.4+（`pwsh.exe`）。它不读取或输出令牌、聊天正文、线程标题或 SQLite 内容；运行记录只留在当前用户的本地应用数据目录。
+- 点击后先显示确认，默认是取消。未保存的桌面端内容、正在生成的回复可能丢失；本功能不保存、不恢复任何会话。
+- 直接路径不读取会话锁、不等待普通窗口关闭、不调用 `codex login` 或 `codex doctor`。成功只表示旧的精确包进程已退出且观察到新的 ChatGPT Desktop 根进程。
+- 助手需要 PowerShell 7.4+（`pwsh.exe`）。它不读取或输出令牌、聊天正文、线程标题或 SQLite 内容。
 
-源码中的只读预检和安全模拟可用于诊断，不会关闭或启动 Desktop：
+源码中的只读预检和直接重启模拟可用于诊断，模拟模式不会关闭或启动 Desktop：
 
 ```powershell
 pwsh -NoLogo -NoProfile -NonInteractive -File .\restart\Inspect-CodexDesktopRestart.ps1
-pwsh -NoLogo -NoProfile -NonInteractive -File .\restart\Restart-CodexDesktop.ps1 -Mode Simulate -Execute
+pwsh -NoLogo -NoProfile -NonInteractive -File .\restart\Direct-Restart-CodexDesktop.ps1 -Mode Simulate -Execute -DirectForce
 ```
 
 ## 下载与安装
@@ -127,7 +127,7 @@ dotnet .\tests\QuotaChecks\bin\Release\net8.0-windows\QuotaChecks.dll --live
 - 目前仅提供 Windows x64 构建，不提供 ARM64 或 x86 专用包。
 - 真实额度依赖本机 Codex 安装、ChatGPT 登录状态和网络连接。
 - 会员到期字段受 Codex 服务端响应和本地登录令牌格式影响；两处都缺失时显示“会员到期时间未知”。
-- 优雅重启只能验证并重新打开 ChatGPT Desktop；它不会自动恢复未完成的流式回合，也不会替用户完成需要交互的登录。
+- 直接重启只负责关闭并重新打开 ChatGPT Desktop；它不会保存或恢复未完成回合，也不会替用户完成需要交互的登录。
 
 ## 许可证
 

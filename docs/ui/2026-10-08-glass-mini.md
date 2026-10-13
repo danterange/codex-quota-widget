@@ -87,10 +87,10 @@ powershell.exe -NoLogo -NoProfile -ExecutionPolicy Bypass -File scripts/Test-UiS
 | 项目 | 落地方案 | 设计理由 |
 | --- | --- | --- |
 | 主题 | 夜间默认 → 白天 → 玻璃的三态循环；语义色令牌动态替换 | 避免 WPF 冻结静态画刷导致“按钮显示切换、卡片仍是旧颜色”的半切换状态。夜间用于长期常驻，白天提高浅色桌面上的对比度，玻璃强化 DWM Acrylic 的通透感。 |
-| 背景 | Windows 11 使用 DWM Acrylic；旧系统和高对比度改用不透明语义色 | 不启用 `AllowsTransparency`，避免 WPF 软件渲染、窗口拖动卡顿和文字透明。 |
+| 背景 | Windows 11 在系统“透明效果”开启时使用 DWM Acrylic；关闭、旧系统和高对比度改用不透明语义色 | 不启用 `AllowsTransparency`，避免 WPF 软件渲染、窗口拖动卡顿和文字透明；外壳维持约 38–44% 不透明，额度卡片提高到约 60–65% 保持文字对比。 |
 | 标题栏 | 重启 Desktop、主题、贴角、置顶、最小化、最大化/还原、关闭 | 所有图标保留 28 DIP 命中区域，标题文本允许截断而控制按钮不裁切；每个无文字图标有 Name/HelpText/ToolTip。 |
 | 贴角 | 先用 `SizeToContent.WidthAndHeight` 重新测量，再限制到所在显示器工作区，最后按最近角落贴边 | 显式“贴角”代表用户希望恢复最优小组件尺寸，因此覆盖之前的手动放大；普通自由缩放仍被保留。 |
-| 优雅重启 | 打包 PowerShell 7 监督器，精确锁定 OpenAI.Codex MSIX 路径、PID 和创建时间 | 不按 `ChatGPT.exe`/`codex*` 模糊匹配，不影响 CLI；快照只记录 writer-lock UUID，未完成流式回合一律要求用户手动继续。正常关闭超时后，必须第二次点击并确认才会强制结束精确包进程。 |
+| 直接重启 | 打包 PowerShell 7 直接重启助手，精确锁定 OpenAI.Codex MSIX 路径、PID 和创建时间 | 点击确认后立即强制结束本次捕获的包内 Desktop 进程，确认全部退出后用已验证 AUMID 打开新根进程；不按 `ChatGPT.exe`/`codex*` 模糊匹配，不影响 CLI 或终端，不保存或恢复会话。 |
 
 主题设计遵循高密度桌面仪表盘的 4/8 DIP 间距节奏、统一 1.5 DIP 线框图标和语义化颜色。日间与夜间均以动态资源更新文字、边框、卡片、控件状态和 ToolTip；高对比度启动时使用 Windows 系统色。
 

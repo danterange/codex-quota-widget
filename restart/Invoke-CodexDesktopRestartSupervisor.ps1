@@ -4,6 +4,15 @@ param(
     [Parameter(Mandatory = $true)]
     [string]$ManifestPath,
 
+    [Parameter(Mandatory = $true)]
+    [string]$RunId,
+
+    [Parameter(Mandatory = $true)]
+    [string]$ReadyPath,
+
+    [Parameter(Mandatory = $true)]
+    [string]$PermitPath,
+
     [switch]$ForceAfterTimeout,
 
     [switch]$Simulate
@@ -12,10 +21,30 @@ param(
 Set-StrictMode -Version Latest
 $ErrorActionPreference = 'Stop'
 
-$modulePath = Join-Path -Path $PSScriptRoot -ChildPath 'CodexDesktopRestart.Common.psm1'
-Import-Module -Name $modulePath -Force -ErrorAction Stop
-Assert-CodexDesktopRestartHost
+$reportDirectory = Split-Path -Path $ManifestPath -Parent
+if ([string]::IsNullOrWhiteSpace($reportDirectory)) {
+    $reportDirectory = (Get-Location).Path
+}
+$reportPath = Join-Path -Path $reportDirectory -ChildPath 'restart-report.json'
+$events = [Collections.Generic.List[object]]::new()
+$report = [ordered]@{
+    schema_version = 1
+    run_id = $null
+    mode = $null
+    started_at = (Get-Date).ToUniversalTime().ToString('o')
+    state = 'starting'
+    events = $events
+    recovery = [ordered]@{
+        state = 'manual_confirmation_required'
+        message = 'Codex Desktop 没有经验证的公开接口来无损自动恢复正在流式生成的回合。'
+        active_thread_candidates = @()
+    }
+}
 
+<#
+.SYNOPSIS
+Writes the final supervisor report even when the restart module cannot be imported.
+#>
 function Write-SupervisorReport {
     param(
         [Parameter(Mandatory = $true)]
@@ -25,8 +54,66 @@ function Write-SupervisorReport {
         [string]$Path
     )
 
-    Write-AtomicJson -Value $Report -Path $Path
+    $directory = Split-Path -Path $Path -Parent
+    if (-not [string]::IsNullOrWhiteSpace($directory)) {
+        [IO.Directory]::CreateDirectory($directory) | Out-Null
+    }
+
+    if ($null -ne (Get-Command -Name Write-AtomicJson -ErrorAction SilentlyContinue)) {
+        Write-AtomicJson -Value $Report -Path $Path
+        return
+    }
+
+    # 模块导入前的失败仍须可被调用方观察；以独立的原子替换避免读到半截 JSON。
+    $temporaryPath = "$Path.$PID.tmp"
+    try {
+        $json = $Report | ConvertTo-Json -Compress -Depth 30
+        [IO.File]::WriteAllText($temporaryPath, $json, [Text.UTF8Encoding]::new($false))
+        [IO.File]::Move($temporaryPath, $Path, $true)
+    }
+    finally {
+        if (Test-Path -LiteralPath $temporaryPath -PathType Leaf) {
+            Remove-Item -LiteralPath $temporaryPath -Force -ErrorAction SilentlyContinue
+        }
+    }
 }
+
+function Wait-ForSupervisorPermit {
+    <#
+    .SYNOPSIS
+    Waits for the parent to authorize this exact run after readiness is proven; without the permit the child exits before requesting any Desktop close.
+    #>
+    param(
+        [Parameter(Mandatory = $true)]
+        [string]$PermitPath,
+
+        [Parameter(Mandatory = $true)]
+        [string]$RunId,
+
+        [ValidateRange(1, 15)]
+        [int]$TimeoutSeconds = 8
+    )
+
+    $deadline = (Get-Date).AddSeconds($TimeoutSeconds)
+    do {
+        if (Test-Path -LiteralPath $PermitPath -PathType Leaf) {
+            try {
+                $permit = Get-Content -LiteralPath $PermitPath -Raw -ErrorAction Stop | ConvertFrom-Json -Depth 10
+                if ([string]::Equals([string]$permit.run_id, $RunId, [StringComparison]::Ordinal) -and [string]$permit.state -eq 'supervisor_authorized') {
+                    return $true
+                }
+            }
+            catch {
+                # 父进程以原子替换写许可；短暂读取竞争不应被当作关闭授权。
+            }
+        }
+        Start-Sleep -Milliseconds 150
+    } while ((Get-Date) -lt $deadline)
+
+    return $false
+}
+
+$modulePath = Join-Path -Path $PSScriptRoot -ChildPath 'CodexDesktopRestart.Common.psm1'
 function Request-NormalRootClose {
     param(
         [Parameter(Mandatory = $true)]
@@ -179,27 +266,36 @@ function Wait-ForDesktopHealth {
     return $last
 }
 
-$reportPath = Join-Path -Path (Split-Path -Path $ManifestPath -Parent) -ChildPath 'restart-report.json'
-$events = [Collections.Generic.List[object]]::new()
-$report = [ordered]@{
-    schema_version = 1
-    run_id = $null
-    mode = $null
-    started_at = (Get-Date).ToUniversalTime().ToString('o')
-    state = 'starting'
-    events = $events
-    recovery = [ordered]@{
-        state = 'manual_confirmation_required'
-        message = 'Codex Desktop 没有经验证的公开接口来无损自动恢复正在流式生成的回合。'
-        active_thread_candidates = @()
-    }
-}
-
 try {
+    Import-Module -Name $modulePath -Force -ErrorAction Stop
+    Assert-CodexDesktopRestartHost
     $manifest = Read-VerifiedRestartManifest -ManifestPath $ManifestPath
     $report.run_id = [string]$manifest.run_id
     $report.mode = [string]$manifest.mode
     Add-RestartReportEvent -Events $events -Stage 'manifest_verified' -Detail ([pscustomobject]@{ schema_version = $manifest.schema_version })
+
+    $expectedReadyPath = Join-Path -Path $reportDirectory -ChildPath 'supervisor-ready.json'
+    $expectedPermitPath = Join-Path -Path $reportDirectory -ChildPath 'supervisor-permit.json'
+    if (-not [string]::Equals([string]$manifest.run_id, $RunId, [StringComparison]::Ordinal) -or
+        -not [string]::Equals([IO.Path]::GetFullPath($ReadyPath), [IO.Path]::GetFullPath($expectedReadyPath), [StringComparison]::OrdinalIgnoreCase) -or
+        -not [string]::Equals([IO.Path]::GetFullPath($PermitPath), [IO.Path]::GetFullPath($expectedPermitPath), [StringComparison]::OrdinalIgnoreCase)) {
+        throw '监督进程的运行标识、就绪标记或关闭许可路径不匹配，拒绝继续。'
+    }
+
+    # 父进程只有在此标记出现后才会写许可；在收到许可前监督器不能触发任何 Desktop 关闭动作。
+    Write-AtomicJson -Value ([ordered]@{
+            run_id = [string]$manifest.run_id
+            state = 'supervisor_ready'
+            ready_at = (Get-Date).ToUniversalTime().ToString('o')
+        }) -Path $ReadyPath
+    if (-not (Wait-ForSupervisorPermit -PermitPath $PermitPath -RunId $RunId)) {
+        $report.state = 'supervisor_authorization_not_received'
+        Add-RestartReportEvent -Events $events -Stage 'authorization_not_received' -Detail ([pscustomobject]@{ message = '父进程未在限定时间内确认本次关闭授权。' })
+        $report.finished_at = (Get-Date).ToUniversalTime().ToString('o')
+        Write-SupervisorReport -Report $report -Path $reportPath
+        exit 7
+    }
+    Add-RestartReportEvent -Events $events -Stage 'authorization_received' -Detail ([pscustomobject]@{ run_id = [string]$manifest.run_id })
 
     $report.recovery.active_thread_candidates = @($manifest.session_snapshot.active_thread_candidates)
     if ($Simulate) {

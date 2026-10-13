@@ -39,14 +39,14 @@ internal static class WidgetThemePalette
     private static readonly Palette Glass = new()
     {
         Line = "#8B93D6FF", PrimaryText = "#F7FAFF", SecondaryText = "#D0DAEB", MutedText = "#93A4BD",
-        Accent = "#75B8FF", AccentHover = "#A9D5FF", AccentSoft = "#395B8C", Control = "#4A233650",
-        ControlHover = "#66516F97", ControlPressed = "#80506D8B", ControlBorder = "#7F8BAED2", ControlDisabled = "#3A4A5C72",
-        Panel = "#AA1B2940", PanelBorder = "#7E91B1D6", Surface = "#AA26354D", Card = "#78273A57", CardBorder = "#7D8AAAD1",
-        Weekly = "#C2A9FF", WeeklySoft = "#593E807A", Success = "#75E4CF", QuotaGreen = "#75E4CF", QuotaPurple = "#C2A9FF", QuotaYellow = "#FFE452", QuotaRed = "#FF9A92", Rail = "#66304561", RailHover = "#8649637D",
-        RailSelected = "#8A315D9A", SummaryCard = "#55283B58", QuotaCard = "#5E293D5C", CreditCard = "#57243B5A",
+        Accent = "#75B8FF", AccentHover = "#A9D5FF", AccentSoft = "#395B8C", Control = "#6B233650",
+        ControlHover = "#84516F97", ControlPressed = "#94506D8B", ControlBorder = "#7F8BAED2", ControlDisabled = "#3A4A5C72",
+        Panel = "#701B2940", PanelBorder = "#7E91B1D6", Surface = "#6826354D", Card = "#A0273A57", CardBorder = "#608AAAD1",
+        Weekly = "#C2A9FF", WeeklySoft = "#8B3E807A", Success = "#75E4CF", QuotaGreen = "#75E4CF", QuotaPurple = "#C2A9FF", QuotaYellow = "#FFE452", QuotaRed = "#FF9A92", Rail = "#54283E61", RailHover = "#7049637D",
+        RailSelected = "#94315D9A", SummaryCard = "#9A243A58", QuotaCard = "#A6293D5C", CreditCard = "#9E243B5A",
         ProgressTrack = "#5DCCE0FF", ChromeHover = "#4DFFFFFF", ChromePressed = "#68FFFFFF", ChromeActive = "#704A8CD0",
         DangerHover = "#C4C84D65", OnAccent = "#07111F", Tooltip = "#FA142138", TooltipBorder = "#C084C6FF", TooltipText = "#F7FAFF",
-        TransparentSurface = ["#91233A59", "#861B2D47", "#8E493267"], OpaqueSurface = ["#263D5A", "#1E304A", "#45315E"]
+        TransparentSurface = ["#6C20334F", "#6218253B", "#70462F62"], OpaqueSurface = ["#263D5A", "#1E304A", "#45315E"]
     };
 
     /// <summary>将指定主题的语义色替换进动态资源字典；已加载控件会重新解析令牌而不会保留被冻结的旧画刷。</summary>

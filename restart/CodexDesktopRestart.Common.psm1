@@ -670,7 +670,7 @@ function Get-CodexDesktopHealthStatus {
 function Start-CodexDesktopRestartSupervisor {
     <#
     .SYNOPSIS
-    Starts a detached pwsh supervisor so the caller can safely end before Desktop receives its close request.
+    Starts a detached pwsh supervisor with run-specific readiness and authorization targets, so the child cannot close Desktop before its parent confirms the same manifest.
     #>
     param(
         [Parameter(Mandatory = $true)]
@@ -678,6 +678,15 @@ function Start-CodexDesktopRestartSupervisor {
 
         [Parameter(Mandatory = $true)]
         [string]$ManifestPath,
+
+        [Parameter(Mandatory = $true)]
+        [string]$RunId,
+
+        [Parameter(Mandatory = $true)]
+        [string]$ReadyPath,
+
+        [Parameter(Mandatory = $true)]
+        [string]$PermitPath,
 
         [switch]$ForceAfterTimeout,
 
@@ -693,7 +702,7 @@ function Start-CodexDesktopRestartSupervisor {
     $startInfo.FileName = $pwshPath
     $startInfo.UseShellExecute = $false
     $startInfo.CreateNoWindow = $true
-    foreach ($argument in @('-NoLogo', '-NoProfile', '-NonInteractive', '-ExecutionPolicy', 'Bypass', '-File', $SupervisorScript, '-ManifestPath', $ManifestPath)) {
+    foreach ($argument in @('-NoLogo', '-NoProfile', '-NonInteractive', '-ExecutionPolicy', 'Bypass', '-File', $SupervisorScript, '-ManifestPath', $ManifestPath, '-RunId', $RunId, '-ReadyPath', $ReadyPath, '-PermitPath', $PermitPath)) {
         [void]$startInfo.ArgumentList.Add($argument)
     }
     if ($ForceAfterTimeout) {
@@ -703,7 +712,12 @@ function Start-CodexDesktopRestartSupervisor {
         [void]$startInfo.ArgumentList.Add('-Simulate')
     }
 
-    return [Diagnostics.Process]::Start($startInfo).Id
+    $process = [Diagnostics.Process]::Start($startInfo)
+    if ($null -eq $process) {
+        throw '未能启动 Desktop 重启监督进程。'
+    }
+
+    return [pscustomobject]@{ pid = [int]$process.Id }
 }
 
 Export-ModuleMember -Function @(

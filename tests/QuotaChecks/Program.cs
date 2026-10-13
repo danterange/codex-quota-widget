@@ -1,4 +1,6 @@
 using System.IO;
+using System.Diagnostics;
+using System.Security.Cryptography;
 using System.Text.Json;
 using System.Windows;
 using System.Windows.Threading;
@@ -46,11 +48,18 @@ internal static class Program
             {
                 CheckLocator();
                 CheckSettings();
+                CheckBackdropPolicy();
                 CheckMembershipPresentation();
                 CheckFreePresentationAsync().GetAwaiter().GetResult();
                 CheckStaleSnapshotAsync().GetAwaiter().GetResult();
                 CheckSingleInstanceCoordinator();
                 CheckDesktopRestartHelperAsync().GetAwaiter().GetResult();
+                CheckDirectDesktopRestartHelperAsync().GetAwaiter().GetResult();
+                CheckDirectRestartSimulationAsync().GetAwaiter().GetResult();
+                CheckRestartSupervisorEarlyFailureReportAsync().GetAwaiter().GetResult();
+                CheckRestartHelperRejectsUnreadySupervisorAsync().GetAwaiter().GetResult();
+                CheckRestartSupervisorRequiresPermitAsync().GetAwaiter().GetResult();
+                CheckConfirmedForceUsesShortGraceAsync().GetAwaiter().GetResult();
                 CheckProtocolAsync().GetAwaiter().GetResult();
                 CheckDispatcher(new CountingProvider(), live: false);
             }
@@ -65,7 +74,7 @@ internal static class Program
         }
     }
 
-    /// <summary>使用隔离窗口验证英文布局、主题循环、任务栏排除和隐藏恢复，不创建托盘、不写入用户设置。</summary>
+    /// <summary>使用隔离窗口验证英文布局、主题循环、玻璃层次、任务栏排除和隐藏恢复，不创建托盘、不写入用户设置。</summary>
     private static void CheckWindowShell()
     {
         var app = new System.Windows.Application { ShutdownMode = ShutdownMode.OnExplicitShutdown };
@@ -90,9 +99,13 @@ internal static class Program
                 ?? throw new InvalidOperationException("主题标题按钮缺失。");
             var restartButton = window.FindName("RestartCodexButton") as System.Windows.Controls.Button
                 ?? throw new InvalidOperationException("桌面端重启标题按钮缺失。");
+            var restartNotice = window.FindName("RestartNoticeTextBlock") as System.Windows.Controls.TextBlock
+                ?? throw new InvalidOperationException("桌面端重启状态提示缺失。");
             Check(true, "主题和桌面端重启标题按钮存在");
             Check(System.Windows.Automation.AutomationProperties.GetName(themeButton) == "Night", "夜间主题按钮初始辅助名称正确");
-            Check(System.Windows.Automation.AutomationProperties.GetName(restartButton).Contains("Restart", StringComparison.Ordinal), "桌面端重启按钮有明确辅助名称");
+            Check(System.Windows.Automation.AutomationProperties.GetName(restartButton) == "Restart ChatGPT Desktop", "直接重启按钮有精确辅助名称");
+            Check(System.Windows.Automation.AutomationProperties.GetHelpText(restartButton).Contains("CLI sessions and terminal processes are not closed", StringComparison.Ordinal), "直接重启按钮说明 CLI 和终端隔离边界");
+            Check(System.Windows.Automation.AutomationProperties.GetLiveSetting(restartNotice) == System.Windows.Automation.AutomationLiveSetting.Polite, "直接重启状态提示会向辅助技术播报");
             themeButton.RaiseEvent(new System.Windows.RoutedEventArgs(System.Windows.Controls.Button.ClickEvent));
             window.Dispatcher.Invoke(() => { }, DispatcherPriority.ApplicationIdle);
             Check(System.Windows.Automation.AutomationProperties.GetName(themeButton) == "Day", "主题按钮可切换到白天主题");
@@ -103,6 +116,10 @@ internal static class Program
             themeButton.RaiseEvent(new System.Windows.RoutedEventArgs(System.Windows.Controls.Button.ClickEvent));
             window.Dispatcher.Invoke(() => { }, DispatcherPriority.ApplicationIdle);
             Check(System.Windows.Automation.AutomationProperties.GetName(themeButton) == "Glass", "主题按钮可切换到玻璃主题");
+            var glassSurface = (System.Windows.Media.LinearGradientBrush)app.Resources["GlassBrush"];
+            var quotaCard = (System.Windows.Media.SolidColorBrush)app.Resources["QuotaCardBrush"];
+            Check(glassSurface.GradientStops.All(stop => stop.Color.A is >= 0x60 and <= 0x70), "玻璃外壳保持 38% 到 44% 的可见透明度");
+            Check(quotaCard.Color.A is >= 0x95 and <= 0xB0, "玻璃额度卡片保持较高不透明度以保护文字对比度");
             SaveWindowRender(window, Path.Combine(output, "english-glass.png"));
             themeButton.RaiseEvent(new System.Windows.RoutedEventArgs(System.Windows.Controls.Button.ClickEvent));
             window.Dispatcher.Invoke(() => { }, DispatcherPriority.ApplicationIdle);
@@ -296,7 +313,7 @@ internal static class Program
     private static async Task CheckDesktopRestartHelperAsync()
     {
         var outputRoot = Path.Combine(Directory.GetCurrentDirectory(), "bin", "Release", "net8.0-windows", "restart");
-        foreach (var required in new[] { "CodexDesktopRestart.Common.psm1", "Restart-CodexDesktop.ps1", "Invoke-CodexDesktopRestartSupervisor.ps1" })
+        foreach (var required in new[] { "CodexDesktopRestart.Common.psm1", "Restart-CodexDesktop.ps1", "Direct-Restart-CodexDesktop.ps1", "Invoke-CodexDesktopRestartSupervisor.ps1" })
         {
             Check(File.Exists(Path.Combine(outputRoot, required)), "发布输出包含重启助手 " + required);
         }
@@ -341,6 +358,19 @@ internal static class Program
             File.WriteAllText(invalidScriptPath, "Write-Output '[RESULT] " + EscapePowerShellSingleQuoted(invalidPayload) + "'" + Environment.NewLine + "exit 0");
             var invalidResult = await new CodexDesktopRestartService(invalidScriptPath).RestartAsync(CancellationToken.None);
             Check(invalidResult == CodexDesktopRestartResult.Failed, "重启助手拒绝本次 run 目录之外的报告路径");
+
+            var cancellationMarkerPath = Path.Combine(root, "cancelled-helper-started.txt");
+            var cancelledScriptPath = Path.Combine(root, "cancelled-helper.ps1");
+            File.WriteAllText(cancelledScriptPath, string.Join(Environment.NewLine, new[]
+            {
+                "[System.IO.File]::WriteAllText('" + EscapePowerShellSingleQuoted(cancellationMarkerPath) + "', 'started')",
+                "exit 0"
+            }));
+            using var cancelled = new CancellationTokenSource();
+            cancelled.Cancel();
+            var cancelledResult = await new CodexDesktopRestartService(cancelledScriptPath).RestartAsync(cancelled.Token, forceAfterTimeout: true);
+            await Task.Delay(1500);
+            Check(cancelledResult == CodexDesktopRestartResult.Cancelled && !File.Exists(cancellationMarkerPath), "已取消的重启请求不会启动带强制参数的辅助进程");
         }
         finally
         {
@@ -348,6 +378,246 @@ internal static class Program
             if (Directory.Exists(runDirectory)) Directory.Delete(runDirectory, recursive: true);
         }
     }
+
+    /// <summary>验证直接重启只调用专用强制入口，不再把旧的优雅关闭参数带入，从而避免会话快照和正常关闭等待成为启动条件。</summary>
+    private static async Task CheckDirectDesktopRestartHelperAsync()
+    {
+        var root = Path.Combine(Path.GetTempPath(), "quota-direct-restart-test-" + Guid.NewGuid().ToString("N"));
+        var directScriptPath = Path.Combine(root, "fake-direct-restart.ps1");
+        var directMarkerPath = Path.Combine(root, "direct-marker.txt");
+        var legacyMarkerPath = Path.Combine(root, "legacy-marker.txt");
+        var payload = JsonSerializer.Serialize(new { state = "direct_desktop_relaunched" });
+        Directory.CreateDirectory(root);
+        File.WriteAllText(directScriptPath, string.Join(Environment.NewLine, new[]
+        {
+            "if ($args -contains '-DirectForce') { [System.IO.File]::WriteAllText('" + EscapePowerShellSingleQuoted(directMarkerPath) + "', 'direct') }",
+            "if ($args -contains '-ForceAfterTimeout') { [System.IO.File]::WriteAllText('" + EscapePowerShellSingleQuoted(legacyMarkerPath) + "', 'legacy') }",
+            "Write-Output '[RESULT] " + EscapePowerShellSingleQuoted(payload) + "'",
+            "exit 0"
+        }));
+        try
+        {
+            var service = new CodexDesktopRestartService(directHelperScriptPath: directScriptPath);
+            var result = await service.DirectRestartAsync(CancellationToken.None);
+            Check(result == CodexDesktopRestartResult.Relaunched, "直接重启助手返回新 Desktop 根进程已出现的成功状态");
+            Check(File.Exists(directMarkerPath) && !File.Exists(legacyMarkerPath), "直接重启仅传递 DirectForce，不携带旧的优雅重启参数");
+        }
+        finally
+        {
+            if (Directory.Exists(root)) Directory.Delete(root, recursive: true);
+        }
+    }
+
+    /// <summary>执行真实直接重启脚本的隔离模拟，确认显式 DirectForce 才可运行且模拟分支绝不查询、关闭或启动本机 ChatGPT Desktop。</summary>
+    private static async Task CheckDirectRestartSimulationAsync()
+    {
+        var scriptPath = Path.Combine(Directory.GetCurrentDirectory(), "restart", "Direct-Restart-CodexDesktop.ps1");
+        var scriptSource = await File.ReadAllTextAsync(scriptPath);
+        Check(scriptSource.Contains("Get-CodexDesktopProcessCapture", StringComparison.Ordinal)
+            && !scriptSource.Contains("Get-CodexDesktopPackageProcessCapture", StringComparison.Ordinal), "直接重启只捕获精确 ChatGPT 根进程树，不枚举独立包内助手");
+        Check(scriptSource.Contains("Select-ForceEligibleCapturedProcesses", StringComparison.Ordinal), "直接重启在强制结束前仍复用精确包路径和身份筛选");
+        var successful = await RunPowerShellScriptAsync(scriptPath, ["-Mode", "Simulate", "-Execute", "-DirectForce"]);
+        Check(successful.ExitCode == 0, "显式 DirectForce 的直接重启模拟成功");
+        var resultLine = successful.StandardOutput.Split(["\r\n", "\n"], StringSplitOptions.RemoveEmptyEntries)
+            .LastOrDefault(line => line.StartsWith("[RESULT] ", StringComparison.Ordinal))
+            ?? throw new InvalidOperationException("直接重启模拟未返回机器可读结果。 ");
+        using (var payload = JsonDocument.Parse(resultLine[9..]))
+        {
+            Check(payload.RootElement.GetProperty("state").GetString() == "direct_desktop_relaunched", "直接重启模拟返回新的 Desktop 根进程成功状态");
+            Check(payload.RootElement.GetProperty("direct_force").GetBoolean() && !payload.RootElement.GetProperty("host_calls").GetBoolean(), "直接重启模拟不触碰真实 AppX、进程或启动器");
+        }
+
+        var rejected = await RunPowerShellScriptAsync(scriptPath, ["-Mode", "Simulate", "-Execute"]);
+        Check(rejected.ExitCode != 0, "缺少 DirectForce 的直接执行被脚本拒绝");
+    }
+
+    /// <summary>验证监督器在导入自身模块前失败时仍写出最终失败报告，使调用方能立即停止等待而不是把无报告误报为长超时。</summary>
+    private static async Task CheckRestartSupervisorEarlyFailureReportAsync()
+    {
+        var root = Path.Combine(Path.GetTempPath(), "quota-restart-bootstrap-" + Guid.NewGuid().ToString("N"));
+        Directory.CreateDirectory(root);
+        var sourceSupervisor = Path.Combine(Directory.GetCurrentDirectory(), "restart", "Invoke-CodexDesktopRestartSupervisor.ps1");
+        var copiedSupervisor = Path.Combine(root, "Invoke-CodexDesktopRestartSupervisor.ps1");
+        var manifestPath = Path.Combine(root, "manifest.json");
+        var reportPath = Path.Combine(root, "restart-report.json");
+        File.Copy(sourceSupervisor, copiedSupervisor);
+        File.WriteAllText(manifestPath, "{}");
+        try
+        {
+            var result = await RunPowerShellScriptAsync(copiedSupervisor, ["-ManifestPath", manifestPath, "-RunId", "bootstrap-test", "-ReadyPath", Path.Combine(root, "supervisor-ready.json"), "-PermitPath", Path.Combine(root, "supervisor-permit.json")]);
+            Check(result.ExitCode != 0, "缺少重启模块时监督器返回失败退出码");
+            Check(File.Exists(reportPath), "监督器引导失败仍写入最终报告");
+            using var report = JsonDocument.Parse(await File.ReadAllTextAsync(reportPath));
+            Check(report.RootElement.GetProperty("state").GetString() == "failed", "监督器引导失败报告标记为失败");
+        }
+        finally
+        {
+            if (Directory.Exists(root)) Directory.Delete(root, recursive: true);
+        }
+    }
+
+    /// <summary>验证父助手不会把未证明就绪的监督器误报为已调度；模拟子进程引导失败时不得触碰 Desktop，且必须返回可诊断的最终报告。</summary>
+    private static async Task CheckRestartHelperRejectsUnreadySupervisorAsync()
+    {
+        var root = Path.Combine(Path.GetTempPath(), "quota-restart-unready-" + Guid.NewGuid().ToString("N"));
+        var copiedRestartDirectory = Path.Combine(root, "restart");
+        var runRoot = Path.Combine(root, "runs");
+        Directory.CreateDirectory(root);
+        CopyDirectory(Path.Combine(Directory.GetCurrentDirectory(), "restart"), copiedRestartDirectory);
+        File.WriteAllText(Path.Combine(copiedRestartDirectory, "Invoke-CodexDesktopRestartSupervisor.ps1"), "exit 7");
+        try
+        {
+            var result = await RunPowerShellScriptAsync(
+                Path.Combine(copiedRestartDirectory, "Restart-CodexDesktop.ps1"),
+                ["-Mode", "Simulate", "-Execute", "-RunRoot", runRoot]);
+            Check(result.ExitCode != 0, "监督器未就绪时父助手拒绝报告已调度");
+            var resultLine = result.StandardOutput
+                .Split(["\r\n", "\n"], StringSplitOptions.RemoveEmptyEntries)
+                .LastOrDefault(line => line.StartsWith("[RESULT] ", StringComparison.Ordinal))
+                ?? throw new InvalidOperationException("父助手未返回机器可读结果。 ");
+            using var payload = JsonDocument.Parse(resultLine[9..]);
+            Check(payload.RootElement.GetProperty("state").GetString() == "supervisor_bootstrap_failed", "监督器未就绪时返回明确的引导失败状态");
+            var reportDirectories = Directory.GetDirectories(runRoot);
+            Check(reportDirectories.Length == 1, "引导失败测试只创建一个隔离运行目录");
+            using var report = JsonDocument.Parse(await File.ReadAllTextAsync(Path.Combine(reportDirectories[0], "restart-report.json")));
+            Check(report.RootElement.GetProperty("state").GetString() == "supervisor_bootstrap_failed", "父助手记录监督器引导失败报告");
+        }
+        finally
+        {
+            if (Directory.Exists(root)) Directory.Delete(root, recursive: true);
+        }
+    }
+
+    /// <summary>验证监督器即使已校验模拟清单，也必须收到父进程针对同一 run 的授权文件才会进入后续状态机；缺少授权时不得请求任何 Desktop 关闭。</summary>
+    private static async Task CheckRestartSupervisorRequiresPermitAsync()
+    {
+        var root = Path.Combine(Path.GetTempPath(), "quota-restart-permit-" + Guid.NewGuid().ToString("N"));
+        Directory.CreateDirectory(root);
+        var runId = "20261012-120000-" + Guid.NewGuid().ToString("N")[..8];
+        var manifestPath = Path.Combine(root, "manifest.json");
+        var readyPath = Path.Combine(root, "supervisor-ready.json");
+        var permitPath = Path.Combine(root, "supervisor-permit.json");
+        try
+        {
+            using var fixture = JsonDocument.Parse(await File.ReadAllTextAsync(Path.Combine(Directory.GetCurrentDirectory(), "restart", "tests", "fixtures", "simulation-happy.json")));
+            var manifestJson = JsonSerializer.Serialize(new
+            {
+                schema_version = 1,
+                run_id = runId,
+                mode = "simulation",
+                created_at = DateTimeOffset.UtcNow.ToString("O"),
+                desktop = fixture.RootElement.GetProperty("desktop"),
+                captured_processes = fixture.RootElement.GetProperty("captured_processes"),
+                session_snapshot = fixture.RootElement.GetProperty("session_snapshot"),
+                grace_seconds = 5,
+                launch_timeout_seconds = 5,
+                force_after_timeout = false
+            });
+            await File.WriteAllTextAsync(manifestPath, manifestJson);
+            await File.WriteAllTextAsync(manifestPath + ".sha256", Convert.ToHexString(SHA256.HashData(await File.ReadAllBytesAsync(manifestPath))));
+
+            var result = await RunPowerShellScriptAsync(
+                Path.Combine(Directory.GetCurrentDirectory(), "restart", "Invoke-CodexDesktopRestartSupervisor.ps1"),
+                ["-ManifestPath", manifestPath, "-RunId", runId, "-ReadyPath", readyPath, "-PermitPath", permitPath]);
+            Check(result.ExitCode != 0, "未获父进程授权的监督器拒绝继续运行");
+            Check(File.Exists(readyPath), "监督器先写入本次运行的就绪标记");
+            using var report = JsonDocument.Parse(await File.ReadAllTextAsync(Path.Combine(root, "restart-report.json")));
+            Check(report.RootElement.GetProperty("state").GetString() == "supervisor_authorization_not_received", "缺少授权会形成明确的最终报告");
+            var requestedClose = report.RootElement.GetProperty("events").EnumerateArray()
+                .Any(item => item.GetProperty("stage").GetString() == "normal_close_requested");
+            Check(!requestedClose, "未授权监督器不会请求关闭任何 Desktop 窗口");
+        }
+        finally
+        {
+            if (Directory.Exists(root)) Directory.Delete(root, recursive: true);
+        }
+    }
+
+    /// <summary>验证用户已确认强制关闭时，新的隔离监督器只保留极短的最后正常退出窗口，不会重复等待完整的首次宽限时间。</summary>
+    private static async Task CheckConfirmedForceUsesShortGraceAsync()
+    {
+        var root = Path.Combine(Path.GetTempPath(), "quota-restart-force-grace-" + Guid.NewGuid().ToString("N"));
+        var runRoot = Path.Combine(root, "runs");
+        Directory.CreateDirectory(root);
+        try
+        {
+            var result = await RunPowerShellScriptAsync(
+                Path.Combine(Directory.GetCurrentDirectory(), "restart", "Restart-CodexDesktop.ps1"),
+                ["-Mode", "Simulate", "-Execute", "-ForceAfterTimeout", "-RunRoot", runRoot]);
+            Check(result.ExitCode == 0, "确认强制关闭的模拟监督器可安全调度");
+            var runDirectory = Directory.GetDirectories(runRoot).Single();
+            using var manifest = JsonDocument.Parse(await File.ReadAllTextAsync(Path.Combine(runDirectory, "manifest.json")));
+            Check(manifest.RootElement.GetProperty("force_after_timeout").GetBoolean(), "确认强制关闭会记录在隔离清单中");
+            Check(manifest.RootElement.GetProperty("grace_seconds").GetInt32() == 1, "确认后只保留一秒最终退出窗口");
+        }
+        finally
+        {
+            if (Directory.Exists(root)) Directory.Delete(root, recursive: true);
+        }
+    }
+
+    /// <summary>复制完整的重启助手到临时目录，使故障注入只影响本次隔离回归，不会修改发布脚本或真实 Desktop。</summary>
+    private static void CopyDirectory(string sourceDirectory, string destinationDirectory)
+    {
+        foreach (var sourcePath in Directory.EnumerateFiles(sourceDirectory, "*", SearchOption.AllDirectories))
+        {
+            var destinationPath = Path.Combine(destinationDirectory, Path.GetRelativePath(sourceDirectory, sourcePath));
+            Directory.CreateDirectory(Path.GetDirectoryName(destinationPath)!);
+            File.Copy(sourcePath, destinationPath);
+        }
+    }
+
+    /// <summary>用受支持的 PowerShell 7 启动隔离脚本，以验证重启助手的引导失败路径而不查询或关闭真实 Desktop。</summary>
+    private static async Task<PowerShellExecutionResult> RunPowerShellScriptAsync(string scriptPath, IReadOnlyList<string> scriptArguments)
+    {
+        var shellPath = FindPowerShell7ForTest();
+
+        using var process = new Process
+        {
+            StartInfo = new ProcessStartInfo
+            {
+                FileName = shellPath,
+                UseShellExecute = false,
+                RedirectStandardOutput = true,
+                RedirectStandardError = true,
+                CreateNoWindow = true
+            }
+        };
+        foreach (var argument in new[] { "-NoLogo", "-NoProfile", "-NonInteractive", "-ExecutionPolicy", "Bypass", "-File", scriptPath })
+        {
+            process.StartInfo.ArgumentList.Add(argument);
+        }
+        foreach (var argument in scriptArguments)
+        {
+            process.StartInfo.ArgumentList.Add(argument);
+        }
+
+        if (!process.Start())
+        {
+            throw new InvalidOperationException("无法启动隔离 PowerShell 测试进程。 ");
+        }
+
+        var standardOutput = process.StandardOutput.ReadToEndAsync();
+        var standardError = process.StandardError.ReadToEndAsync();
+        await process.WaitForExitAsync();
+        return new PowerShellExecutionResult(process.ExitCode, await standardOutput, await standardError);
+    }
+
+    /// <summary>定位当前环境可执行的 PowerShell 7；测试只运行隔离夹具，因此允许使用 PATH 中的宿主而不复用产品对隐藏执行入口的签名策略。</summary>
+    private static string FindPowerShell7ForTest()
+    {
+        var programFilesCandidate = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.ProgramFiles), "PowerShell", "7", "pwsh.exe");
+        var pathCandidates = (Environment.GetEnvironmentVariable("PATH") ?? string.Empty)
+            .Split(Path.PathSeparator, StringSplitOptions.RemoveEmptyEntries)
+            .Select(path => Path.Combine(path.Trim().Trim('"'), "pwsh.exe"));
+        var shellPath = new[] { programFilesCandidate }
+            .Concat(pathCandidates)
+            .FirstOrDefault(File.Exists);
+        return shellPath ?? throw new InvalidOperationException("测试需要可执行的 PowerShell 7。 ");
+    }
+
+    /// <summary>保留隔离 PowerShell 子进程的退出码和文本，失败断言可在不解析用户真实诊断的前提下报告脚本状态。</summary>
+    private sealed record PowerShellExecutionResult(int ExitCode, string StandardOutput, string StandardError);
 
     /// <summary>将测试路径和 JSON 变为 PowerShell 单引号字符串字面量，避免临时辅助脚本受到路径空格或引号影响。</summary>
     private static string EscapePowerShellSingleQuoted(string value)
@@ -407,6 +677,15 @@ internal static class Program
         Check(CodexExecutableLocator.Find(null, npm, Path.Combine(root, "absent")) == Path.Combine(npm, "codex.cmd"), "无桌面版时仍能定位 npm");
         Check(CodexExecutableLocator.Find(null, root, Path.Combine(root, "absent")) is null, "未安装时返回缺失状态");
         Check(CodexExecutableLocator.Find(Path.Combine(root, "missing.exe"), npm, Path.Combine(root, "bin")) is null, "显式路径缺失时不偷偷切换");
+    }
+
+    /// <summary>验证玻璃材质只在系统、辅助功能和用户透明效果均允许时启用，避免把 DWM 调用成功误判为实际可见的透明效果。</summary>
+    private static void CheckBackdropPolicy()
+    {
+        Check(WindowBackdrop.ShouldEnableAcrylic(isSupportedWindows: true, highContrast: false, systemTransparencyEnabled: true), "系统透明效果开启时允许 Acrylic 玻璃材质");
+        Check(!WindowBackdrop.ShouldEnableAcrylic(isSupportedWindows: true, highContrast: false, systemTransparencyEnabled: false), "系统透明效果关闭时使用可读实色回退");
+        Check(!WindowBackdrop.ShouldEnableAcrylic(isSupportedWindows: true, highContrast: true, systemTransparencyEnabled: true), "高对比度模式不启用透明玻璃材质");
+        Check(!WindowBackdrop.ShouldEnableAcrylic(isSupportedWindows: false, highContrast: false, systemTransparencyEnabled: true), "不支持的 Windows 版本不启用透明玻璃材质");
     }
 
     /// <summary>从生产提供器发起真实子进程 RPC，验证握手、通知、错误、超时和清理。</summary>
